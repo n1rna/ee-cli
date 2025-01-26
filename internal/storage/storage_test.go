@@ -3,7 +3,6 @@ package storage
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/n1rna/menv/internal/config"
@@ -17,14 +16,10 @@ func setupTestStorage(t *testing.T) (*Storage, func()) {
 		t.Fatalf("failed to create temp directory: %v", err)
 	}
 
-	// Override the default storage location for testing
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return nil, nil
+	// Create configuration
+	cfg := &config.Config{
+		BaseDir: tmpDir,
 	}
-
-	originalBaseDir := cfg.BaseDir
-	cfg.BaseDir = filepath.Base(tmpDir)
 
 	storage, err := NewStorage(cfg)
 	if err != nil {
@@ -34,7 +29,6 @@ func setupTestStorage(t *testing.T) (*Storage, func()) {
 
 	// Return a cleanup function
 	cleanup := func() {
-		cfg.BaseDir = originalBaseDir
 		os.RemoveAll(tmpDir)
 	}
 
@@ -45,9 +39,22 @@ func TestSaveAndLoadSchema(t *testing.T) {
 	storage, cleanup := setupTestStorage(t)
 	defer cleanup()
 
-	// Test schema
+	// Test schema with inheritance
+	baseSchema := &schema.Schema{
+		Name: "base-schema",
+		Variables: []schema.Variable{
+			{
+				Name:     "BASE_VAR",
+				Type:     "string",
+				Default:  "base-value",
+				Required: true,
+			},
+		},
+	}
+
 	testSchema := &schema.Schema{
-		Name: "test-schema",
+		Name:    "test-schema",
+		Extends: []string{"base-schema"},
 		Variables: []schema.Variable{
 			{
 				Name:     "TEST_VAR",
@@ -58,24 +65,53 @@ func TestSaveAndLoadSchema(t *testing.T) {
 		},
 	}
 
-	// Save schema
+	// Save base schema
+	if err := storage.SaveSchema(baseSchema); err != nil {
+		t.Fatalf("failed to save base schema: %v", err)
+	}
+
+	// Save test schema
 	if err := storage.SaveSchema(testSchema); err != nil {
-		t.Fatalf("failed to save schema: %v", err)
+		t.Fatalf("failed to save test schema: %v", err)
 	}
 
-	// Load schema
-	loadedSchema, err := storage.LoadSchema("test-schema")
+	// Test cache behavior
+	// First load should cache
+	loadedSchema1, err := storage.LoadSchema("test-schema")
 	if err != nil {
-		t.Fatalf("failed to load schema: %v", err)
+		t.Fatalf("failed to load schema first time: %v", err)
 	}
 
-	// Compare schemas
-	if loadedSchema.Name != testSchema.Name {
-		t.Errorf("expected schema name %s, got %s", testSchema.Name, loadedSchema.Name)
+	// Second load should use cache
+	loadedSchema2, err := storage.LoadSchema("test-schema")
+	if err != nil {
+		t.Fatalf("failed to load schema second time: %v", err)
 	}
 
-	if len(loadedSchema.Variables) != len(testSchema.Variables) {
-		t.Errorf("expected %d variables, got %d", len(testSchema.Variables), len(loadedSchema.Variables))
+	// Verify it's the same instance (cached)
+	if loadedSchema1 != loadedSchema2 {
+		t.Error("cache not working, got different instances")
+	}
+
+	// Test schema updates and cache invalidation
+	testSchema.Variables = append(testSchema.Variables, schema.Variable{
+		Name: "NEW_VAR",
+		Type: "string",
+	})
+
+	if err := storage.SaveSchema(testSchema); err != nil {
+		t.Fatalf("failed to save updated schema: %v", err)
+	}
+
+	// Load again, should get new version
+	loadedSchema3, err := storage.LoadSchema("test-schema")
+	if err != nil {
+		t.Fatalf("failed to load updated schema: %v", err)
+	}
+
+	if len(loadedSchema3.Variables) != len(testSchema.Variables) {
+		t.Errorf("cache not invalidated properly, expected %d variables, got %d",
+			len(testSchema.Variables), len(loadedSchema3.Variables))
 	}
 }
 
@@ -83,38 +119,68 @@ func TestSaveAndLoadConfigSheet(t *testing.T) {
 	storage, cleanup := setupTestStorage(t)
 	defer cleanup()
 
-	// Test config sheet
+	// Create base config
+	baseConfig := &schema.ConfigSheet{
+		ProjectName: "base-project",
+		EnvName:     "development",
+		Schema:      "test-schema",
+		Values: map[string]string{
+			"BASE_VAR": "base-value",
+		},
+	}
+
+	// Create test config with inheritance
 	testConfig := &schema.ConfigSheet{
 		ProjectName: "test-project",
 		EnvName:     "development",
 		Schema:      "test-schema",
+		Extends:     []string{"base-project:development"},
 		Values: map[string]string{
 			"TEST_VAR": "test-value",
 		},
 	}
 
-	// Save config sheet
+	// Save configs
+	if err := storage.SaveConfigSheet(baseConfig); err != nil {
+		t.Fatalf("failed to save base config: %v", err)
+	}
+
 	if err := storage.SaveConfigSheet(testConfig); err != nil {
-		t.Fatalf("failed to save config sheet: %v", err)
+		t.Fatalf("failed to save test config: %v", err)
 	}
 
-	// Load config sheet
-	loadedConfig, err := storage.LoadConfigSheet("test-project", "development")
+	// Test cache behavior
+	// First load should cache
+	loaded1, err := storage.LoadConfigSheet("test-project", "development")
 	if err != nil {
-		t.Fatalf("failed to load config sheet: %v", err)
+		t.Fatalf("failed to load config first time: %v", err)
 	}
 
-	// Compare config sheets
-	if loadedConfig.ProjectName != testConfig.ProjectName {
-		t.Errorf("expected project name %s, got %s", testConfig.ProjectName, loadedConfig.ProjectName)
+	// Second load should use cache
+	loaded2, err := storage.LoadConfigSheet("test-project", "development")
+	if err != nil {
+		t.Fatalf("failed to load config second time: %v", err)
 	}
 
-	if loadedConfig.EnvName != testConfig.EnvName {
-		t.Errorf("expected env name %s, got %s", testConfig.EnvName, loadedConfig.EnvName)
+	// Verify it's the same instance (cached)
+	if loaded1 != loaded2 {
+		t.Error("cache not working, got different instances")
 	}
 
-	if v, ok := loadedConfig.Values["TEST_VAR"]; !ok || v != "test-value" {
-		t.Errorf("expected TEST_VAR value 'test-value', got %s", v)
+	// Test config updates and cache invalidation
+	testConfig.Values["NEW_VAR"] = "new-value"
+	if err := storage.SaveConfigSheet(testConfig); err != nil {
+		t.Fatalf("failed to save updated config: %v", err)
+	}
+
+	// Load again, should get new version
+	loaded3, err := storage.LoadConfigSheet("test-project", "development")
+	if err != nil {
+		t.Fatalf("failed to load updated config: %v", err)
+	}
+
+	if _, exists := loaded3.Values["NEW_VAR"]; !exists {
+		t.Error("cache not invalidated properly, new value not found")
 	}
 }
 
@@ -122,17 +188,52 @@ func TestListProjects(t *testing.T) {
 	storage, cleanup := setupTestStorage(t)
 	defer cleanup()
 
-	// Create test projects
-	testProjects := []string{"project1", "project2", "project3"}
-	for _, project := range testProjects {
+	// Create test projects with inheritance
+	baseProject := &schema.ConfigSheet{
+		ProjectName: "base-project",
+		EnvName:     "development",
+		Schema:      "base-schema",
+		Values:      map[string]string{"BASE_VAR": "base-value"},
+	}
+
+	testProjects := []struct {
+		name    string
+		extends []string
+		values  map[string]string
+	}{
+		{
+			name:    "project1",
+			extends: []string{"base-project:development"},
+			values:  map[string]string{"PROJ1_VAR": "value1"},
+		},
+		{
+			name:    "project2",
+			extends: []string{"base-project:development"},
+			values:  map[string]string{"PROJ2_VAR": "value2"},
+		},
+		{
+			name:    "project3",
+			extends: []string{"project1:development"},
+			values:  map[string]string{"PROJ3_VAR": "value3"},
+		},
+	}
+
+	// Save base project
+	if err := storage.SaveConfigSheet(baseProject); err != nil {
+		t.Fatalf("failed to save base project: %v", err)
+	}
+
+	// Save test projects
+	for _, proj := range testProjects {
 		config := &schema.ConfigSheet{
-			ProjectName: project,
+			ProjectName: proj.name,
 			EnvName:     "development",
 			Schema:      "test-schema",
-			Values:      map[string]string{},
+			Extends:     proj.extends,
+			Values:      proj.values,
 		}
 		if err := storage.SaveConfigSheet(config); err != nil {
-			t.Fatalf("failed to save config sheet: %v", err)
+			t.Fatalf("failed to save config sheet for %s: %v", proj.name, err)
 		}
 	}
 
@@ -143,20 +244,85 @@ func TestListProjects(t *testing.T) {
 	}
 
 	// Verify projects
-	if len(projects) != len(testProjects) {
-		t.Errorf("expected %d projects, got %d", len(testProjects), len(projects))
+	expectedCount := len(testProjects) + 1 // +1 for base project
+	if len(projects) != expectedCount {
+		t.Errorf("expected %d projects, got %d", expectedCount, len(projects))
 	}
 
-	for _, project := range testProjects {
+	// Check for all projects
+	allProjects := append([]string{"base-project"},
+		"project1", "project2", "project3")
+	for _, expectedProject := range allProjects {
 		found := false
 		for _, p := range projects {
-			if p == project {
+			if p == expectedProject {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("project %s not found in list", project)
+			t.Errorf("project %s not found in list", expectedProject)
 		}
+	}
+}
+
+func TestDeleteAndCacheInvalidation(t *testing.T) {
+	storage, cleanup := setupTestStorage(t)
+	defer cleanup()
+
+	// Create and save a test schema
+	testSchema := &schema.Schema{
+		Name: "test-schema",
+		Variables: []schema.Variable{
+			{Name: "TEST_VAR", Type: "string"},
+		},
+	}
+	if err := storage.SaveSchema(testSchema); err != nil {
+		t.Fatalf("failed to save schema: %v", err)
+	}
+
+	// Load it to cache
+	_, err := storage.LoadSchema("test-schema")
+	if err != nil {
+		t.Fatalf("failed to load schema: %v", err)
+	}
+
+	// Delete the schema
+	if err := storage.DeleteSchema("test-schema"); err != nil {
+		t.Fatalf("failed to delete schema: %v", err)
+	}
+
+	// Try to load it again, should fail
+	_, err = storage.LoadSchema("test-schema")
+	if err == nil {
+		t.Error("expected error loading deleted schema, got nil")
+	}
+
+	// Similar test for config sheets
+	config := &schema.ConfigSheet{
+		ProjectName: "test-project",
+		EnvName:     "development",
+		Schema:      "other-schema",
+		Values:      map[string]string{"TEST_VAR": "value"},
+	}
+	if err := storage.SaveConfigSheet(config); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	// Load to cache
+	_, err = storage.LoadConfigSheet("test-project", "development")
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	// Delete environment
+	if err := storage.DeleteEnvironment("test-project", "development"); err != nil {
+		t.Fatalf("failed to delete environment: %v", err)
+	}
+
+	// Try to load it again, should fail
+	_, err = storage.LoadConfigSheet("test-project", "development")
+	if err == nil {
+		t.Error("expected error loading deleted config, got nil")
 	}
 }

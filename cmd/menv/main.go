@@ -59,7 +59,7 @@ It supports schema validation, multiple environments, and inheritance.`,
 
 	// Add commands
 	rootCmd.AddCommand(
-		command.NewNewCommand(),
+		command.NewCreateCommand(),
 		command.NewEditCommand(),
 		command.NewExportCommand(),
 		command.NewSetCommand(),

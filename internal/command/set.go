@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/n1rna/menv/internal/schema"
+	"github.com/n1rna/menv/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,7 @@ func NewSetCommand() *cobra.Command {
 	sc := &SetCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "set [project-name] [key=value]...",
+		Use:   "set [sheet-name] [key=value]...",
 		Short: "Set environment variable values",
 		Long: `Set one or more environment variable values.
 Example: menv set myproject --env dev DB_HOST=localhost DB_PORT=5432`,
@@ -24,8 +25,8 @@ Example: menv set myproject --env dev DB_HOST=localhost DB_PORT=5432`,
 		RunE: sc.Run,
 	}
 
-	cmd.Flags().String("env", "", "Environment to modify (required)")
-	cmd.MarkFlagRequired("env")
+	cmd.Flags().StringP("project", "p", "", "Project name")
+	cmd.Flags().StringP("env", "e", "", "Environment name")
 
 	return cmd
 }
@@ -36,8 +37,32 @@ func (c *SetCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envName, _ := cmd.Flags().GetString("env")
+	// Get sheet name from args or empty string if not provided
+	sheetName := ""
+	if len(args) > 0 {
+		sheetName = args[0]
+	}
+
+	// Get project and env flags
+	projectFlag, _ := cmd.Flags().GetString("project")
+	envFlag, _ := cmd.Flags().GetString("env")
+
+	// Parse sheet reference
+	ref, err := util.ParseSheetReference(sheetName, projectFlag, envFlag)
+	if err != nil {
+		return err
+	}
+
+	// Validate sheet reference
+	if err := util.ValidateSheetReference(ref, storage); err != nil {
+		return err
+	}
+
+	// Load config sheet
+	configSheet, err := storage.LoadConfigSheet(ref.Project, ref.Env)
+	if err != nil {
+		return fmt.Errorf("failed to load config sheet: %w", err)
+	}
 
 	// Parse key-value pairs
 	updates := make(map[string]string)
@@ -49,12 +74,6 @@ func (c *SetCommand) Run(cmd *cobra.Command, args []string) error {
 		updates[parts[0]] = parts[1]
 	}
 
-	// Load config sheet
-	configSheet, err := storage.LoadConfigSheet(projectName, envName)
-	if err != nil {
-		return fmt.Errorf("failed to load config sheet: %w", err)
-	}
-
 	// Load schema
 	schemaObj, err := storage.LoadSchema(configSheet.Schema)
 	if err != nil {
@@ -62,7 +81,7 @@ func (c *SetCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create validator
-	validator := schema.NewValidator()
+	validator := schema.NewValidator(storage)
 
 	// Validate each update
 	for key, value := range updates {

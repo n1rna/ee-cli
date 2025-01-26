@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/n1rna/menv/internal/logger"
+	"github.com/n1rna/menv/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +21,7 @@ func NewApplyCommand() *cobra.Command {
 	ac := &ApplyCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "apply [project-name] [-- command [args...]]",
+		Use:   "apply [sheet-name] [-- command [args...]]",
 		Short: "Apply environment variables and optionally run a command",
 		Long: `Apply environment variables to a new shell or run a specific command with the environment.
 
@@ -36,8 +37,8 @@ Examples:
 		RunE: ac.Run,
 	}
 
-	cmd.Flags().String("env", "", "Environment to apply (required)")
-	cmd.MarkFlagRequired("env")
+	cmd.Flags().StringP("project", "p", "", "Project name")
+	cmd.Flags().StringP("env", "e", "", "Environment name")
 
 	return cmd
 }
@@ -48,11 +49,29 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envName, _ := cmd.Flags().GetString("env")
+	// Get sheet name from args or empty string if not provided
+	sheetName := ""
+	if len(args) > 0 {
+		sheetName = args[0]
+	}
+
+	// Get project and env flags
+	projectFlag, _ := cmd.Flags().GetString("project")
+	envFlag, _ := cmd.Flags().GetString("env")
+
+	// Parse sheet reference
+	ref, err := util.ParseSheetReference(sheetName, projectFlag, envFlag)
+	if err != nil {
+		return err
+	}
+
+	// Validate sheet reference
+	if err := util.ValidateSheetReference(ref, storage); err != nil {
+		return err
+	}
 
 	// Load config sheet
-	configSheet, err := storage.LoadConfigSheet(projectName, envName)
+	configSheet, err := storage.LoadConfigSheet(ref.Project, ref.Env)
 	if err != nil {
 		return fmt.Errorf("failed to load config sheet: %w", err)
 	}

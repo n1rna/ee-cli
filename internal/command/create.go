@@ -9,54 +9,84 @@ import (
 	"strings"
 
 	"github.com/n1rna/menv/internal/schema"
+	"github.com/n1rna/menv/internal/util"
 	"github.com/spf13/cobra"
 )
 
-type NewCommand struct {
+type CreateCommand struct {
 	reader *bufio.Reader
 }
 
-func NewNewCommand() *cobra.Command {
-	nc := &NewCommand{
+func NewCreateCommand() *cobra.Command {
+	nc := &CreateCommand{
 		reader: bufio.NewReader(os.Stdin),
 	}
 
 	cmd := &cobra.Command{
-		Use:   "new [project-name]",
-		Short: "Create a new project or environment",
+		Use:   "create [sheet-name]",
+		Short: "Create a new config sheet",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  nc.Run,
 	}
 
-	cmd.Flags().String("env", "", "Create a new environment for an existing project")
-	cmd.Flags().String("schema", "", "Use specified schema (for new projects)")
+	cmd.Flags().StringP("project", "p", "", "Project name")
+	cmd.Flags().StringP("env", "e", "", "Environment name")
+	cmd.Flags().StringP("schema", "s", "", "Use specified schema (for new projects)")
 
 	return cmd
 }
 
-func (c *NewCommand) Run(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("project name is required")
-	}
-
-	// Get storage from context
+func (c *CreateCommand) Run(cmd *cobra.Command, args []string) error {
 	storage := GetStorage(cmd.Context())
 	if storage == nil {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envFlag, _ := cmd.Flags().GetString("env")
-	schemaFlag, _ := cmd.Flags().GetString("schema")
-
-	if envFlag != "" {
-		return c.createNewEnvironment(cmd.Context(), projectName, envFlag)
+	// Get sheet name from args or empty string if not provided
+	sheetName := ""
+	if len(args) > 0 {
+		sheetName = args[0]
 	}
 
-	return c.createNewProject(cmd.Context(), projectName, schemaFlag)
+	// Get project and env flags
+	projectFlag, _ := cmd.Flags().GetString("project")
+	envFlag, _ := cmd.Flags().GetString("env")
+
+	// Parse sheet reference
+	ref, err := util.ParseSheetReference(sheetName, projectFlag, envFlag)
+	if err != nil {
+		return err
+	}
+
+	schemaFlag, _ := cmd.Flags().GetString("schema")
+
+	// Ensure project exists
+	projectExists := false
+	if ref.Project != "" {
+		projects, err := storage.ListProjects()
+		if err != nil {
+			return fmt.Errorf("failed to list projects: %w", err)
+		}
+		for _, p := range projects {
+			if p == ref.Project {
+				projectExists = true
+				break
+			}
+		}
+	}
+
+	if projectExists && ref.Env == "" {
+		return fmt.Errorf("project %s already exists", ref.Project)
+	}
+
+	if projectExists && ref.Env != "" {
+		return c.createNewEnvironment(cmd.Context(), ref.Project, ref.Env)
+	}
+
+	return c.createNewProject(cmd.Context(), ref.Project, schemaFlag, ref.Env)
 }
 
-func (c *NewCommand) createNewProject(ctx context.Context, projectName string, schemaName string) error {
+func (c *CreateCommand) createNewProject(ctx context.Context, projectName string, schemaName string, envName string) error {
 	storage := GetStorage(ctx)
 	if storage == nil {
 		return fmt.Errorf("storage not initialized")
@@ -78,10 +108,12 @@ func (c *NewCommand) createNewProject(ctx context.Context, projectName string, s
 	}
 
 	// Create default environment
-	fmt.Print("Enter name for initial environment (default 'development'): ")
-	envName, err := c.reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read environment name: %w", err)
+	if envName == "" {
+		fmt.Print("Enter name for initial environment (default 'development'): ")
+		envName, err = c.reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read environment name: %w", err)
+		}
 	}
 
 	envName = strings.TrimSpace(envName)
@@ -104,7 +136,7 @@ func (c *NewCommand) createNewProject(ctx context.Context, projectName string, s
 	return nil
 }
 
-func (c *NewCommand) createNewEnvironment(ctx context.Context, projectName, envName string) error {
+func (c *CreateCommand) createNewEnvironment(ctx context.Context, projectName, envName string) error {
 	storage := GetStorage(ctx)
 	if storage == nil {
 		return fmt.Errorf("storage not initialized")
@@ -159,7 +191,7 @@ func (c *NewCommand) createNewEnvironment(ctx context.Context, projectName, envN
 	return nil
 }
 
-func (c *NewCommand) createNewSchema(ctx context.Context, name string) (string, error) {
+func (c *CreateCommand) createNewSchema(ctx context.Context, name string) (string, error) {
 	storage := GetStorage(ctx)
 	if storage == nil {
 		return "", fmt.Errorf("storage not initialized")
@@ -231,7 +263,7 @@ func (c *NewCommand) createNewSchema(ctx context.Context, name string) (string, 
 	}
 
 	// Validate and save schema
-	validator := schema.NewValidator()
+	validator := schema.NewValidator(storage)
 	if err := validator.ValidateSchema(_schema); err != nil {
 		return "", fmt.Errorf("invalid schema: %w", err)
 	}

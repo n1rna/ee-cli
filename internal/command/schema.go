@@ -36,6 +36,7 @@ Each variable can have a type, regex pattern, default value, and required flag.`
 		sc.newCreateCommand(),
 		sc.newShowCommand(),
 		sc.newDeleteCommand(),
+		sc.newListCommand(),
 	)
 
 	return cmd
@@ -63,6 +64,15 @@ func (c *SchemaCommand) newShowCommand() *cobra.Command {
 		Short: "Show details of a schema",
 		Args:  cobra.ExactArgs(1),
 		RunE:  c.runShow,
+	}
+}
+
+func (c *SchemaCommand) newListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "Show list of a schemas",
+		Args:  cobra.ExactArgs(0),
+		RunE:  c.runList,
 	}
 }
 
@@ -197,7 +207,7 @@ func (c *SchemaCommand) createSchemaInteractively(storage *storage.Storage, name
 	}
 
 	// Validate schema
-	validator := schema.NewValidator()
+	validator := schema.NewValidator(storage)
 	if err := validator.ValidateSchema(schemaObj); err != nil {
 		return fmt.Errorf("invalid schema: %w", err)
 	}
@@ -226,7 +236,7 @@ func (c *SchemaCommand) importSchema(storage *storage.Storage, name string, file
 	schemaObj.Name = name
 
 	// Validate schema
-	validator := schema.NewValidator()
+	validator := schema.NewValidator(storage)
 	if err := validator.ValidateSchema(&schemaObj); err != nil {
 		return fmt.Errorf("invalid schema in import file: %w", err)
 	}
@@ -267,6 +277,27 @@ func (c *SchemaCommand) runShow(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("  Required: %v\n", v.Required)
 		fmt.Println()
+	}
+
+	return nil
+}
+
+func (c *SchemaCommand) runList(cmd *cobra.Command, args []string) error {
+	storage := GetStorage(cmd.Context())
+	if storage == nil {
+		return fmt.Errorf("storage not initialized")
+	}
+
+	schemas, err := storage.ListSchemas()
+	if err != nil {
+		return fmt.Errorf("failed to list schemas: %w", err)
+	}
+
+	fmt.Println("Schemas:")
+	fmt.Println("────────")
+
+	for _, s := range schemas {
+		fmt.Println(s)
 	}
 
 	return nil

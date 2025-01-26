@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/n1rna/menv/internal/schema"
+	"github.com/n1rna/menv/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -20,34 +21,58 @@ func NewEditCommand() *cobra.Command {
 	ec := &EditCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "edit [project-name]",
+		Use:   "edit [sheet-name]",
 		Short: "Edit environment variables for a project",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  ec.Run,
 	}
 
-	cmd.Flags().String("env", "", "Environment to edit (required)")
-	cmd.MarkFlagRequired("env")
+	cmd.Flags().StringP("project", "p", "", "Project name")
+	cmd.Flags().StringP("env", "e", "", "Environment name")
 
 	return cmd
 }
 
 func (c *EditCommand) Run(cmd *cobra.Command, args []string) error {
-	projectName := args[0]
-	envName, _ := cmd.Flags().GetString("env")
-
-	return c.editEnvironment(cmd.Context(), projectName, envName)
-}
-
-func (c *EditCommand) editEnvironment(ctx context.Context, projectName, envName string) error {
-	storage := GetStorage(ctx)
+	storage := GetStorage(cmd.Context())
 	if storage == nil {
 		return fmt.Errorf("storage not initialized")
 	}
+
+	// Get sheet name from args or empty string if not provided
+	sheetName := ""
+	if len(args) > 0 {
+		sheetName = args[0]
+	}
+
+	// Get project and env flags
+	projectFlag, _ := cmd.Flags().GetString("project")
+	envFlag, _ := cmd.Flags().GetString("env")
+
+	// Parse sheet reference
+	ref, err := util.ParseSheetReference(sheetName, projectFlag, envFlag)
+	if err != nil {
+		return err
+	}
+
+	// Validate sheet reference
+	if err := util.ValidateSheetReference(ref, storage); err != nil {
+		return err
+	}
+
 	// Load config sheet
-	configSheet, err := storage.LoadConfigSheet(projectName, envName)
+	configSheet, err := storage.LoadConfigSheet(ref.Project, ref.Env)
 	if err != nil {
 		return fmt.Errorf("failed to load config sheet: %w", err)
+	}
+
+	return c.editEnvironment(cmd.Context(), configSheet)
+}
+
+func (c *EditCommand) editEnvironment(ctx context.Context, configSheet *schema.ConfigSheet) error {
+	storage := GetStorage(ctx)
+	if storage == nil {
+		return fmt.Errorf("storage not initialized")
 	}
 
 	// Load schema
@@ -56,7 +81,7 @@ func (c *EditCommand) editEnvironment(ctx context.Context, projectName, envName 
 		return fmt.Errorf("failed to load schema: %w", err)
 	}
 
-	validator := schema.NewValidator()
+	validator := schema.NewValidator(storage)
 
 	for {
 		// Create temporary file

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/n1rna/menv/internal/util"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -20,13 +21,14 @@ func NewExportCommand() *cobra.Command {
 	ec := &ExportCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "export [project-name]",
+		Use:   "export [sheet-name]",
 		Short: "Export environment variables in different formats",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE:  ec.Run,
 	}
 
-	cmd.Flags().String("env", "", "Environment to export (required)")
+	cmd.Flags().StringP("project", "p", "", "Project name")
+	cmd.Flags().StringP("env", "e", "", "Environment name")
 	cmd.Flags().StringP("format", "f", "env", "Output format (env, json, or yaml)")
 	cmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
 	cmd.MarkFlagRequired("env")
@@ -40,16 +42,35 @@ func (c *ExportCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envName, _ := cmd.Flags().GetString("env")
-	format, _ := cmd.Flags().GetString("format")
-	output, _ := cmd.Flags().GetString("output")
+	// Get sheet name from args or empty string if not provided
+	sheetName := ""
+	if len(args) > 0 {
+		sheetName = args[0]
+	}
+
+	// Get project and env flags
+	projectFlag, _ := cmd.Flags().GetString("project")
+	envFlag, _ := cmd.Flags().GetString("env")
+
+	// Parse sheet reference
+	ref, err := util.ParseSheetReference(sheetName, projectFlag, envFlag)
+	if err != nil {
+		return err
+	}
+
+	// Validate sheet reference
+	if err := util.ValidateSheetReference(ref, storage); err != nil {
+		return err
+	}
 
 	// Load config sheet
-	configSheet, err := storage.LoadConfigSheet(projectName, envName)
+	configSheet, err := storage.LoadConfigSheet(ref.Project, ref.Env)
 	if err != nil {
 		return fmt.Errorf("failed to load config sheet: %w", err)
 	}
+
+	format, _ := cmd.Flags().GetString("format")
+	output, _ := cmd.Flags().GetString("output")
 
 	// Generate output in specified format
 	var content []byte
