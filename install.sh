@@ -18,10 +18,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Utility functions
-log() { echo -e "${GREEN}[INFO]${NC} $1"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
-debug() { [[ ${DEBUG:-} ]] && echo -e "${BLUE}[DEBUG]${NC} $1" || true; }
+log() { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
+warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+error() { printf "${RED}[ERROR]${NC} %s\n" "$1" >&2; }
+debug() { [ "${DEBUG:-}" ] && printf "${BLUE}[DEBUG]${NC} %s\n" "$1" || true; }
 
 # Detect OS and architecture
 detect_platform() {
@@ -46,7 +46,7 @@ detect_platform() {
     debug "Detected platform: $PLATFORM"
     
     # Set binary suffix for Windows
-    if [[ "$os" == "windows" ]]; then
+    if [ "$os" = "windows" ]; then
         BINARY_SUFFIX=".exe"
     else
         BINARY_SUFFIX=""
@@ -55,7 +55,7 @@ detect_platform() {
 
 # Get the latest version from GitHub API
 get_latest_version() {
-    if [[ -n "$VERSION" ]]; then
+    if [ -n "$VERSION" ]; then
         debug "Using specified version: $VERSION"
         return
     fi
@@ -71,7 +71,7 @@ get_latest_version() {
         exit 1
     fi
     
-    if [[ -z "$VERSION" ]]; then
+    if [ -z "$VERSION" ]; then
         error "Failed to get the latest version"
         exit 1
     fi
@@ -129,12 +129,12 @@ install_binary() {
     
     # Determine install location
     local install_dir
-    if [[ -w "/usr/local/bin" ]]; then
+    if [ -w "/usr/local/bin" ]; then
         install_dir="/usr/local/bin"
-    elif [[ -d "$HOME/.local/bin" ]]; then
+    elif [ -d "$HOME/.local/bin" ]; then
         install_dir="$HOME/.local/bin"
         mkdir -p "$install_dir"
-    elif [[ -d "$HOME/bin" ]]; then
+    elif [ -d "$HOME/bin" ]; then
         install_dir="$HOME/bin"
     else
         install_dir="$HOME/.local/bin"
@@ -152,7 +152,7 @@ install_binary() {
     fi
     
     # Verify installation
-    if "$install_dir/$BINARY_NAME$BINARY_SUFFIX" version >/dev/null 2>&1; then
+    if "$install_dir/$BINARY_NAME$BINARY_SUFFIX" --version >/dev/null 2>&1; then
         log "✅ menv $VERSION installed successfully!"
         log "📍 Location: $install_dir/$BINARY_NAME$BINARY_SUFFIX"
         
@@ -176,7 +176,7 @@ install_binary() {
 
 # Download checksums and verify
 verify_checksum() {
-    if [[ "${SKIP_CHECKSUM:-}" == "true" ]]; then
+    if [ "${SKIP_CHECKSUM:-}" = "true" ]; then
         warn "Skipping checksum verification"
         return
     fi
@@ -202,7 +202,7 @@ verify_checksum() {
         local expected_checksum=$(grep "$binary_name" "$tmp_dir/checksums.txt" | cut -d' ' -f1)
         local actual_checksum=$(sha256sum "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX" | cut -d' ' -f1)
         
-        if [[ "$expected_checksum" != "$actual_checksum" ]]; then
+        if [ "$expected_checksum" != "$actual_checksum" ]; then
             error "Checksum verification failed!"
             error "Expected: $expected_checksum"
             error "Actual: $actual_checksum"
@@ -220,7 +220,7 @@ main() {
     log "🚀 Installing menv CLI tool..."
     
     # Parse arguments
-    while [[ $# -gt 0 ]]; do
+    while [ $# -gt 0 ]; do
         case $1 in
             --version)
                 VERSION="$2"
