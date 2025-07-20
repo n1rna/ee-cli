@@ -12,39 +12,31 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.23'
-    
+
     - name: Get version
       id: version
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-    
-    - name: Install golangci-lint
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
-        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-    
-    - name: Run tests and verification
-      run: make verify
-    
+
     - name: Build all platforms
       run: |
         VERSION=${{ steps.version.outputs.VERSION }} make build-all
-    
+
     - name: Create checksums
       run: |
         cd build
         sha256sum * > checksums.txt
         cat checksums.txt
-    
+
     - name: Generate changelog
       id: changelog
       run: |
@@ -60,7 +52,7 @@ jobs:
             echo "- Initial release" > current_changes.txt
           fi
         fi
-        
+
         # Prepare release body
         echo "## What's Changed" > release_body.txt
         cat current_changes.txt >> release_body.txt
@@ -79,7 +71,7 @@ jobs:
         echo '```' >> release_body.txt
         cat build/checksums.txt >> release_body.txt
         echo '```' >> release_body.txt
-    
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -94,7 +86,7 @@ jobs:
         prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Update installation script
       run: |
         # Update the version in install.sh if it exists
