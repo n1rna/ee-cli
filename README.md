@@ -17,14 +17,39 @@
 
 ## Installation
 
+### Quick Install (Recommended)
+
+Install the latest version with a single command:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh
+```
+
+### Alternative Installation Methods
+
 ```bash
 # Using Go
 go install github.com/n1rna/menv/cmd/menv@latest
+
+# Download specific version
+curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh -s -- --version v1.0.0
 
 # From source
 git clone https://github.com/n1rna/menv.git
 cd menv
 make install
+```
+
+### Manual Installation
+
+1. Download the appropriate binary for your platform from the [releases page](https://github.com/n1rna/menv/releases)
+2. Make it executable: `chmod +x menv`
+3. Move it to your PATH: `sudo mv menv /usr/local/bin/`
+
+### Verify Installation
+
+```bash
+menv version
 ```
 
 ## Quick Start
