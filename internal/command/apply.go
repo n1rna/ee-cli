@@ -1,4 +1,4 @@
-// internal/command/apply.go
+// Package command contains CLI command implementations.
 package command
 
 import (
@@ -91,7 +91,7 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	logger.Info("Running command: %s", strings.Join(os.Args, " "))
+	logger.Infof("Running command: %s", strings.Join(os.Args, " "))
 	if len(cmdArgs) > 0 {
 		// Run specific command
 		return c.runCommand(cmdArgs, env)

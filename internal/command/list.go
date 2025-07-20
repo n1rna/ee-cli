@@ -1,4 +1,4 @@
-// internal/command/list.go
+// Package command contains CLI command implementations.
 package command
 
 import (

@@ -1,4 +1,4 @@
-// internal/command/env.go
+// Package command contains CLI command implementations.
 package command
 
 import (
@@ -81,7 +81,11 @@ func (c *EnvCommand) loadEnvFile(filename string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open env file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	var env []string
 	scanner := bufio.NewScanner(file)

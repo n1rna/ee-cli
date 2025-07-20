@@ -1,4 +1,4 @@
-// internal/command/edit.go
+// Package command contains CLI command implementations.
 package command
 
 import (
@@ -92,14 +92,18 @@ func (c *EditCommand) editEnvironment(ctx context.Context, configSheet *schema.C
 
 		// Open editor
 		if err := c.openEditor(tmpFile); err != nil {
-			os.Remove(tmpFile)
+			if removeErr := os.Remove(tmpFile); removeErr != nil {
+				fmt.Printf("warning: failed to remove temp file: %v\n", removeErr)
+			}
 			return fmt.Errorf("failed to open editor: %w", err)
 		}
 
 		// Parse edited file
 		newValues, err := c.parseEnvFile(tmpFile)
 		if err != nil {
-			os.Remove(tmpFile)
+			if removeErr := os.Remove(tmpFile); removeErr != nil {
+				fmt.Printf("warning: failed to remove temp file: %v\n", removeErr)
+			}
 			return fmt.Errorf("failed to parse edited file: %w", err)
 		}
 
@@ -111,7 +115,9 @@ func (c *EditCommand) editEnvironment(ctx context.Context, configSheet *schema.C
 		if err != nil {
 			// Add error message to the file
 			if err := c.appendErrorToFile(tmpFile, err.Error()); err != nil {
-				os.Remove(tmpFile)
+				if removeErr := os.Remove(tmpFile); removeErr != nil {
+					fmt.Printf("warning: failed to remove temp file: %v\n", removeErr)
+				}
 				return fmt.Errorf("failed to append error message: %w", err)
 			}
 			continue // Reopen editor
@@ -119,12 +125,16 @@ func (c *EditCommand) editEnvironment(ctx context.Context, configSheet *schema.C
 
 		// Save the valid config
 		if err := storage.SaveConfigSheet(configSheet); err != nil {
-			os.Remove(tmpFile)
+			if removeErr := os.Remove(tmpFile); removeErr != nil {
+				fmt.Printf("warning: failed to remove temp file: %v\n", removeErr)
+			}
 			return fmt.Errorf("failed to save config sheet: %w", err)
 		}
 
 		// Clean up
-		os.Remove(tmpFile)
+		if err := os.Remove(tmpFile); err != nil {
+			fmt.Printf("warning: failed to remove temp file: %v\n", err)
+		}
 		break
 	}
 
@@ -137,11 +147,20 @@ func (c *EditCommand) createTempEnvFile(configSheet *schema.ConfigSheet, schemaO
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file: %w", err)
 	}
-	defer tmpFile.Close()
+	defer func() {
+		if err := tmpFile.Close(); err != nil {
+			fmt.Printf("warning: failed to close temp file: %v\n", err)
+		}
+	}()
 
 	// Write header comment
-	fmt.Fprintf(tmpFile, "# Environment variables for %s (%s)\n", configSheet.ProjectName, configSheet.EnvName)
-	fmt.Fprintf(tmpFile, "# Schema: %s\n\n", configSheet.Schema)
+	if _, err := fmt.Fprintf(tmpFile, "# Environment variables for %s (%s)\n",
+		configSheet.ProjectName, configSheet.EnvName); err != nil {
+		return "", fmt.Errorf("failed to write header: %w", err)
+	}
+	if _, err := fmt.Fprintf(tmpFile, "# Schema: %s\n\n", configSheet.Schema); err != nil {
+		return "", fmt.Errorf("failed to write schema: %w", err)
+	}
 
 	// Write variables in .env format
 	for _, v := range schemaObj.Variables {
@@ -152,15 +171,23 @@ func (c *EditCommand) createTempEnvFile(configSheet *schema.ConfigSheet, schemaO
 
 		// Add comment for variable type and constraints
 		if v.Required {
-			fmt.Fprintf(tmpFile, "# Required - Type: %s\n", v.Type)
+			if _, err := fmt.Fprintf(tmpFile, "# Required - Type: %s\n", v.Type); err != nil {
+				return "", fmt.Errorf("failed to write required comment: %w", err)
+			}
 		} else {
-			fmt.Fprintf(tmpFile, "# Optional - Type: %s\n", v.Type)
+			if _, err := fmt.Fprintf(tmpFile, "# Optional - Type: %s\n", v.Type); err != nil {
+				return "", fmt.Errorf("failed to write optional comment: %w", err)
+			}
 		}
 		if v.Regex != "" {
-			fmt.Fprintf(tmpFile, "# Pattern: %s\n", v.Regex)
+			if _, err := fmt.Fprintf(tmpFile, "# Pattern: %s\n", v.Regex); err != nil {
+				return "", fmt.Errorf("failed to write pattern comment: %w", err)
+			}
 		}
 
-		fmt.Fprintf(tmpFile, "%s=%s\n\n", v.Name, value)
+		if _, err := fmt.Fprintf(tmpFile, "%s=%s\n\n", v.Name, value); err != nil {
+			return "", fmt.Errorf("failed to write variable: %w", err)
+		}
 	}
 
 	return tmpFile.Name(), nil
@@ -185,7 +212,11 @@ func (c *EditCommand) parseEnvFile(filename string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	values := make(map[string]string)
 	scanner := bufio.NewScanner(file)

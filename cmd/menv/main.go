@@ -1,4 +1,4 @@
-// cmd/menv/main.go
+// menv is a CLI tool for managing environment variables with schema-based validation.
 package main
 
 import (
@@ -54,7 +54,8 @@ It supports schema validation, multiple environments, and inheritance.`,
 	}
 
 	// Add global flags
-	rootCmd.PersistentFlags().StringVar(&cfgBaseDir, "dir", "", "Base directory for menv storage (default: $MENV_HOME or ~/.menv)")
+	rootCmd.PersistentFlags().StringVar(&cfgBaseDir, "dir", "",
+		"Base directory for menv storage (default: $MENV_HOME or ~/.menv)")
 	rootCmd.PersistentFlags().BoolVar(&globalFlags.debug, "debug", false, "Enable debug output")
 
 	// Add commands

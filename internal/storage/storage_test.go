@@ -1,4 +1,4 @@
-// internal/storage/storage_test.go
+// Package storage contains tests for storage functionality.
 package storage
 
 import (
@@ -23,13 +23,17 @@ func setupTestStorage(t *testing.T) (*Storage, func()) {
 
 	storage, err := NewStorage(cfg)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Logf("warning: failed to remove temp directory: %v", err)
+		}
 		t.Fatalf("failed to create storage: %v", err)
 	}
 
 	// Return a cleanup function
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Logf("warning: failed to remove temp directory: %v", err)
+		}
 	}
 
 	return storage, cleanup

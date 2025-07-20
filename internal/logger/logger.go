@@ -1,4 +1,4 @@
-// internal/logger/logger.go
+// Package logger provides structured logging functionality for menv.
 package logger
 
 import (
@@ -32,10 +32,10 @@ var levelNames = map[LogLevel]string{
 // Logger represents a logger instance
 type Logger struct {
 	level      LogLevel
-	outputs    map[LogLevel][]io.Writer
 	mu         sync.Mutex
-	showFile   bool
+	outputs    map[LogLevel][]io.Writer
 	timeFormat string
+	showFile   bool
 }
 
 var (
@@ -96,7 +96,7 @@ func (l *Logger) AddOutput(level LogLevel, w io.Writer) {
 func (l *Logger) AddFileOutput(level LogLevel, filename string) error {
 	// Ensure directory exists
 	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
@@ -111,7 +111,7 @@ func (l *Logger) AddFileOutput(level LogLevel, filename string) error {
 
 // getCallerInfo returns the file and line number of the caller
 func getCallerInfo() string {
-	_, file, line, ok := runtime.Caller(3) // Skip getCallerInfo, log, and the actual logging function
+	_, file, line, ok := runtime.Caller(4) // Skip getCallerInfo, formatMessage, log, and the actual logging function
 	if !ok {
 		return "???:0"
 	}
@@ -136,8 +136,8 @@ func (l *Logger) formatMessage(level LogLevel, msg string) string {
 	return fmt.Sprintf("%s [%s] %s", timestamp, levelName, msg)
 }
 
-// log writes a message to all configured outputs for the given level
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
+// logf writes a message to all configured outputs for the given level
+func (l *Logger) logf(level LogLevel, format string, args ...interface{}) {
 	if level < l.level {
 		return
 	}
@@ -159,48 +159,51 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 	for lvl, writers := range l.outputs {
 		if lvl >= level {
 			for _, w := range writers {
-				fmt.Fprintln(w, formattedMsg)
+				if _, err := fmt.Fprintln(w, formattedMsg); err != nil {
+					// Best effort logging - continue even if write fails
+					continue
+				}
 			}
 		}
 	}
 }
 
-// Debug logs a debug message
-func (l *Logger) Debug(format string, args ...interface{}) {
-	l.log(DEBUG, format, args...)
+// Debugf logs a debug message
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	l.logf(DEBUG, format, args...)
 }
 
-// Info logs an info message
-func (l *Logger) Info(format string, args ...interface{}) {
-	l.log(INFO, format, args...)
+// Infof logs an info message
+func (l *Logger) Infof(format string, args ...interface{}) {
+	l.logf(INFO, format, args...)
 }
 
-// Warn logs a warning message
-func (l *Logger) Warn(format string, args ...interface{}) {
-	l.log(WARN, format, args...)
+// Warnf logs a warning message
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	l.logf(WARN, format, args...)
 }
 
-// Error logs an error message
-func (l *Logger) Error(format string, args ...interface{}) {
-	l.log(ERROR, format, args...)
+// Errorf logs an error message
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.logf(ERROR, format, args...)
 }
 
 // Global convenience functions that use the default logger
 
-func Debug(format string, args ...interface{}) {
-	GetLogger().Debug(format, args...)
+func Debugf(format string, args ...interface{}) {
+	GetLogger().Debugf(format, args...)
 }
 
-func Info(format string, args ...interface{}) {
-	GetLogger().Info(format, args...)
+func Infof(format string, args ...interface{}) {
+	GetLogger().Infof(format, args...)
 }
 
-func Warn(format string, args ...interface{}) {
-	GetLogger().Warn(format, args...)
+func Warnf(format string, args ...interface{}) {
+	GetLogger().Warnf(format, args...)
 }
 
-func Error(format string, args ...interface{}) {
-	GetLogger().Error(format, args...)
+func Errorf(format string, args ...interface{}) {
+	GetLogger().Errorf(format, args...)
 }
 
 // SetGlobalLevel sets the level for the default logger

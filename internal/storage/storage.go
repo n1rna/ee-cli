@@ -1,4 +1,4 @@
-// internal/storage/storage.go
+// Package storage handles all file system operations for menv.
 package storage
 
 import (
@@ -49,7 +49,7 @@ func (s *Storage) getConfigSheetPath(projectName, envName string) string {
 	return filepath.Join(s.getProjectPath(projectName), fmt.Sprintf("%s.yaml", envName))
 }
 
-// Modified NewStorage function
+// NewStorage creates a new storage instance with the given configuration.
 func NewStorage(cfg *config.Config) (*Storage, error) {
 	if cfg == nil {
 		var err error
@@ -131,7 +131,11 @@ func (s *Storage) SaveSchema(schema *schema.Schema) error {
 	if err != nil {
 		return fmt.Errorf("failed to create schema file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	encoder := yaml.NewEncoder(file)
 	encoder.SetIndent(2)
@@ -151,7 +155,7 @@ func (s *Storage) SaveConfigSheet(configSheet *schema.ConfigSheet) error {
 	}
 
 	projectPath := s.getProjectPath(configSheet.ProjectName)
-	if err := os.MkdirAll(projectPath, 0755); err != nil {
+	if err := os.MkdirAll(projectPath, 0750); err != nil {
 		return fmt.Errorf("failed to create project directory: %w", err)
 	}
 
@@ -160,7 +164,11 @@ func (s *Storage) SaveConfigSheet(configSheet *schema.ConfigSheet) error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	encoder := yaml.NewEncoder(file)
 	encoder.SetIndent(2)
@@ -241,6 +249,9 @@ func (s *Storage) DeleteEnvironment(projectName, envName string) error {
 	if err := os.Remove(configPath); err != nil {
 		return fmt.Errorf("failed to delete environment: %w", err)
 	}
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("%s:%s", projectName, envName)
+	delete(s.configCache, cacheKey)
 	return nil
 }
 
@@ -250,5 +261,7 @@ func (s *Storage) DeleteSchema(name string) error {
 	if err := os.Remove(schemaPath); err != nil {
 		return fmt.Errorf("failed to delete schema file: %w", err)
 	}
+	// Invalidate cache
+	delete(s.schemaCache, name)
 	return nil
 }

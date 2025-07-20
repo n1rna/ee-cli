@@ -1,4 +1,4 @@
-// internal/util/sheet.go
+// Package util provides utility functions for sheet reference parsing.
 package util
 
 import (

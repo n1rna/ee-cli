@@ -1,4 +1,4 @@
-// internal/logger/logger_test.go
+// Package logger contains tests for logger functionality.
 package logger
 
 import (
@@ -30,13 +30,13 @@ func TestLogLevels(t *testing.T) {
 
 		switch tt.level {
 		case DEBUG:
-			logger.Debug(tt.message)
+			logger.Debugf(tt.message)
 		case INFO:
-			logger.Info(tt.message)
+			logger.Infof(tt.message)
 		case WARN:
-			logger.Warn(tt.message)
+			logger.Warnf(tt.message)
 		case ERROR:
-			logger.Error(tt.message)
+			logger.Errorf(tt.message)
 		}
 
 		output := buf.String()
@@ -56,14 +56,14 @@ func TestLogLevel(t *testing.T) {
 	logger.AddOutput(INFO, &buf)
 
 	// Debug shouldn't log when level is INFO
-	logger.Debug("debug message")
+	logger.Debugf("debug message")
 	if buf.String() != "" {
 		t.Error("Expected no debug output when level is INFO")
 	}
 
 	// Info should log
 	buf.Reset()
-	logger.Info("info message")
+	logger.Infof("info message")
 	if buf.String() == "" {
 		t.Error("Expected info output")
 	}
@@ -75,7 +75,7 @@ func TestFormatting(t *testing.T) {
 	logger.AddOutput(INFO, &buf)
 
 	// Test with format string
-	logger.Info("Count: %d", 42)
+	logger.Infof("Count: %d", 42)
 	output := buf.String()
 	if !strings.Contains(output, "Count: 42") {
 		t.Errorf("Expected formatted message, got %q", output)
@@ -89,7 +89,7 @@ func TestMultipleOutputs(t *testing.T) {
 	logger.AddOutput(INFO, &buf2)
 
 	message := "test message"
-	logger.Info(message)
+	logger.Infof("%s", message)
 
 	if !strings.Contains(buf1.String(), message) {
 		t.Error("Expected message in first buffer")
@@ -106,7 +106,7 @@ func TestShowFile(t *testing.T) {
 
 	// Test with file info
 	logger.SetShowFile(true)
-	logger.Info("test message")
+	logger.Infof("test message")
 	if !strings.Contains(buf.String(), "logger_test.go:") {
 		t.Error("Expected file information in log")
 	}
@@ -114,7 +114,7 @@ func TestShowFile(t *testing.T) {
 	// Test without file info
 	buf.Reset()
 	logger.SetShowFile(false)
-	logger.Info("test message")
+	logger.Infof("test message")
 	if strings.Contains(buf.String(), "logger_test.go:") {
 		t.Error("Expected no file information in log")
 	}

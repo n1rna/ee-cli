@@ -1,4 +1,4 @@
-// internal/schema/types.go
+// Package schema defines data structures and validation for environment schemas.
 package schema
 
 import (
@@ -167,7 +167,11 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 }
 
 // resolveConfigSheet resolves a config sheet with all inherited values
-func (v *Validator) resolveConfigSheet(config *ConfigSheet, schema *Schema, visited map[string]bool) (*ConfigSheet, error) {
+//
+//nolint:unparam // schema parameter used in recursive calls
+func (v *Validator) resolveConfigSheet(
+	config *ConfigSheet, schema *Schema, visited map[string]bool,
+) (*ConfigSheet, error) {
 	if visited[config.ProjectName+":"+config.EnvName] {
 		return nil, fmt.Errorf("circular dependency detected in config %s:%s", config.ProjectName, config.EnvName)
 	}

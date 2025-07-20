@@ -1,4 +1,4 @@
-// internal/command/new.go
+// Package command contains CLI command implementations.
 package command
 
 import (
@@ -86,7 +86,9 @@ func (c *CreateCommand) Run(cmd *cobra.Command, args []string) error {
 	return c.createNewProject(cmd.Context(), ref.Project, schemaFlag, ref.Env)
 }
 
-func (c *CreateCommand) createNewProject(ctx context.Context, projectName string, schemaName string, envName string) error {
+func (c *CreateCommand) createNewProject(
+	ctx context.Context, projectName string, schemaName string, envName string,
+) error {
 	storage := GetStorage(ctx)
 	if storage == nil {
 		return fmt.Errorf("storage not initialized")
@@ -143,7 +145,7 @@ func (c *CreateCommand) createNewEnvironment(ctx context.Context, projectName, e
 	}
 
 	// Check if project exists
-	projects, err := storage.ListProjects()
+	projects, _ := storage.ListProjects()
 	projectExists := false
 	for _, p := range projects {
 		if p == projectName {

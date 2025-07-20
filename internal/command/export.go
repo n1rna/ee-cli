@@ -1,4 +1,4 @@
-// internal/command/export.go
+// Package command contains CLI command implementations.
 package command
 
 import (
@@ -31,7 +31,9 @@ func NewExportCommand() *cobra.Command {
 	cmd.Flags().StringP("env", "e", "", "Environment name")
 	cmd.Flags().StringP("format", "f", "env", "Output format (env, json, or yaml)")
 	cmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
-	cmd.MarkFlagRequired("env")
+	if err := cmd.MarkFlagRequired("env"); err != nil {
+		return nil
+	}
 
 	return cmd
 }
@@ -76,7 +78,7 @@ func (c *ExportCommand) Run(cmd *cobra.Command, args []string) error {
 	var content []byte
 	switch strings.ToLower(format) {
 	case "env":
-		content, err = c.formatAsEnv(configSheet.Values)
+		content = c.formatAsEnv(configSheet.Values)
 	case "json":
 		content, err = c.formatAsJSON(configSheet.Values)
 	case "yaml":
@@ -109,7 +111,7 @@ func (c *ExportCommand) Run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (c *ExportCommand) formatAsEnv(values map[string]string) ([]byte, error) {
+func (c *ExportCommand) formatAsEnv(values map[string]string) []byte {
 	var builder strings.Builder
 
 	// Sort keys for consistent output
@@ -128,7 +130,7 @@ func (c *ExportCommand) formatAsEnv(values map[string]string) ([]byte, error) {
 		builder.WriteString(fmt.Sprintf("%s=%s\n", key, value))
 	}
 
-	return []byte(builder.String()), nil
+	return []byte(builder.String())
 }
 
 func (c *ExportCommand) formatAsJSON(values map[string]string) ([]byte, error) {
