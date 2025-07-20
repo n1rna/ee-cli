@@ -32,7 +32,6 @@ linters:
     - dogsled
     - dupl
     - errcheck
-    - copyloopvar
     - gochecknoinits
     - gocritic
     - gofmt
@@ -56,7 +55,6 @@ linters:
     - gochecknoglobals
     - godot
     - godox
-    - err113
     - nestif
     - prealloc
     - testpackage
