@@ -1,4 +1,4 @@
-// Package logger provides structured logging functionality for menv.
+// Package logger provides structured logging functionality for ee.
 package logger
 
 import (

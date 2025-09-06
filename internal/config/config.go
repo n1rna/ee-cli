@@ -1,4 +1,4 @@
-// Package config handles configuration management for menv.
+// Package config handles configuration management for ee.
 package config
 
 import (
@@ -9,21 +9,39 @@ import (
 
 // Config holds global configuration settings
 type Config struct {
-	// BaseDir is the root directory for menv storage
+	// BaseDir is the root directory for ee storage
 	BaseDir string
+
+	// API settings
+	API APIConfig
+}
+
+// APIConfig holds API-related configuration
+type APIConfig struct {
+	// Enabled indicates if API integration is enabled
+	Enabled bool
+	// BaseURL is the API endpoint URL
+	BaseURL string
+	// APIKey is the authentication key for the API
+	APIKey string
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		BaseDir: getDefaultBaseDir(),
+		API: APIConfig{
+			Enabled: false,
+			BaseURL: "http://127.0.0.1:8000",
+			APIKey:  "",
+		},
 	}
 }
 
 // getDefaultBaseDir returns the default base directory path
 func getDefaultBaseDir() string {
 	// Check for environment variable first
-	if envDir := os.Getenv("MENV_HOME"); envDir != "" {
+	if envDir := os.Getenv("EE_HOME"); envDir != "" {
 		return envDir
 	}
 
@@ -31,9 +49,9 @@ func getDefaultBaseDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		// If we can't get the home directory, use current directory
-		return ".menv"
+		return ".ee"
 	}
-	return filepath.Join(homeDir, ".menv")
+	return filepath.Join(homeDir, ".ee")
 }
 
 // LoadConfig loads configuration from environment and validates it
@@ -41,8 +59,17 @@ func LoadConfig() (*Config, error) {
 	cfg := DefaultConfig()
 
 	// Override with environment variables if present
-	if envDir := os.Getenv("MENV_HOME"); envDir != "" {
+	if envDir := os.Getenv("EE_HOME"); envDir != "" {
 		cfg.BaseDir = envDir
+	}
+
+	// Override API settings from environment
+	if apiURL := os.Getenv("EE_API_URL"); apiURL != "" {
+		cfg.API.BaseURL = apiURL
+	}
+	if apiKey := os.Getenv("EE_API_KEY"); apiKey != "" {
+		cfg.API.APIKey = apiKey
+		cfg.API.Enabled = true
 	}
 
 	// Validate configuration

@@ -24,7 +24,7 @@ If applicable, provide examples of how you would use this feature:
 
 ```bash
 # Example command usage
-menv new-feature --example-flag value
+ee new-feature --example-flag value
 ```
 
 **Additional context**

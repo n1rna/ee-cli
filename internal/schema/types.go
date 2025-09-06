@@ -1,51 +1,301 @@
 // Package schema defines data structures and validation for environment schemas.
+// This is a complete rewrite for UUID-based entity architecture as specified in docs/entities.md
 package schema
 
 import (
 	"fmt"
 	"regexp"
-	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
+// Entity represents the base structure for all ee entities (Schema, Project, ConfigSheet)
+// with UUID-based identification and remote/local tracking capabilities
+type Entity struct {
+	ID          string    `json:"id"`                    // UUID for distributed identification
+	Name        string    `json:"name"`                  // Human-readable name
+	Description string    `json:"description,omitempty"` // Optional description
+	Remote      string    `json:"remote,omitempty"`      // Remote URL if synced with API
+	Local       bool      `json:"local"`                 // Whether entity exists locally
+	CreatedAt   time.Time `json:"created_at"`            // Creation timestamp
+	UpdatedAt   time.Time `json:"updated_at"`            // Last update timestamp
+}
+
+// NewEntity creates a new entity with generated UUID and current timestamps
+func NewEntity(name, description string) Entity {
+	now := time.Now()
+	return Entity{
+		ID:          uuid.New().String(),
+		Name:        name,
+		Description: description,
+		Local:       true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
 // Variable represents a single environment variable definition in the schema
+// Enhanced with title field for better UX
 type Variable struct {
-	Name     string `yaml:"name"`
-	Type     string `yaml:"type"`
-	Regex    string `yaml:"regex,omitempty"`
-	Default  string `yaml:"default,omitempty"`
-	Required bool   `yaml:"required,omitempty"`
+	Name     string `json:"name"`              // Variable name (e.g., DATABASE_URL)
+	Title    string `json:"title,omitempty"`   // Human-readable title (e.g., "Database Connection URL")
+	Type     string `json:"type"`              // Variable type: string, number, boolean, url
+	Regex    string `json:"regex,omitempty"`   // Validation regex pattern
+	Default  string `json:"default,omitempty"` // Default value
+	Required bool   `json:"required"`          // Whether variable is required
 }
 
-// Schema represents the complete schema definition for a project
+// Schema represents the complete schema definition for environment variables
+// Now inherits from Entity base with UUID support
 type Schema struct {
-	Name      string     `yaml:"name"`
-	Variables []Variable `yaml:"variables"`
-	Extends   []string   `yaml:"extends,omitempty"` // Names of schemas to inherit from
+	Entity               // Embedded Entity base
+	Variables []Variable `json:"variables"` // Variable definitions
+	Extends   []string   `json:"extends"`   // UUIDs or names of schemas to inherit from
 }
 
-// ConfigSheet represents a specific environment configuration for a project
+// NewSchema creates a new schema with generated UUID
+func NewSchema(name, description string, variables []Variable, extends []string) *Schema {
+	if extends == nil {
+		extends = []string{}
+	}
+	return &Schema{
+		Entity:    NewEntity(name, description),
+		Variables: variables,
+		Extends:   extends,
+	}
+}
+
+// Environment represents an environment within a project
+// Only stores the environment name - config sheet is derived via naming convention
+type Environment struct {
+	Name string `json:"name"` // Environment name (e.g., "development", "production")
+}
+
+// Project represents a project containing multiple environments
+// Now inherits from Entity base and embeds environments
+type Project struct {
+	Entity                              // Embedded Entity base
+	Schema       string                 `json:"schema"`       // UUID reference to schema
+	Environments map[string]Environment `json:"environments"` // Map of environment name -> Environment
+}
+
+// NewProject creates a new project with generated UUID
+func NewProject(name, description, schemaID string) *Project {
+	return &Project{
+		Entity:       NewEntity(name, description),
+		Schema:       schemaID,
+		Environments: make(map[string]Environment),
+	}
+}
+
+// AddEnvironment adds an environment to the project
+func (p *Project) AddEnvironment(envName string) {
+	p.Environments[envName] = Environment{
+		Name: envName,
+	}
+	p.UpdatedAt = time.Now()
+}
+
+// GetConfigSheetName returns the config sheet name for a given environment
+// Uses naming convention: "{project-name}-{environment-name}"
+func (p *Project) GetConfigSheetName(envName string) string {
+	return fmt.Sprintf("%s-%s", p.Name, envName)
+}
+
+// RemoveEnvironment removes an environment from the project
+func (p *Project) RemoveEnvironment(envName string) {
+	delete(p.Environments, envName)
+	p.UpdatedAt = time.Now()
+}
+
+// SchemaReference represents either a reference to an existing schema or inline schema definition
+// Supports both referenced and dynamic schemas as specified in docs/entities.md
+type SchemaReference struct {
+	Ref       string              `json:"ref,omitempty"`       // Reference like "#/schemas/{uuid}" or schema name
+	Variables map[string]Variable `json:"variables,omitempty"` // Inline schema variables for dynamic schemas
+}
+
+// IsInline returns true if this is an inline schema definition
+func (sr *SchemaReference) IsInline() bool {
+	return len(sr.Variables) > 0 && sr.Ref == ""
+}
+
+// IsReference returns true if this references an existing schema
+func (sr *SchemaReference) IsReference() bool {
+	return sr.Ref != ""
+}
+
+// ConfigSheet represents a standalone configuration sheet
+// Can exist independently or be associated with a project environment
 type ConfigSheet struct {
-	ProjectName string            `yaml:"project_name"`
-	EnvName     string            `yaml:"env_name"`
-	Schema      string            `yaml:"schema"`
-	Values      map[string]string `yaml:"values"`
-	Extends     []string          `yaml:"extends,omitempty"` // Projects to inherit from
+	Entity                        // Embedded Entity base
+	Schema      SchemaReference   `json:"schema"`                // Schema definition or reference
+	Project     string            `json:"project,omitempty"`     // Optional project UUID
+	Environment string            `json:"environment,omitempty"` // Optional environment name
+	Values      map[string]string `json:"values"`                // Variable values
+	Extends     []string          `json:"extends,omitempty"`     // UUIDs or names of config sheets to inherit from
 }
 
-// Validator handles schema validation logic
+// NewConfigSheet creates a new config sheet with generated UUID
+func NewConfigSheet(name, description string, schema SchemaReference, values map[string]string) *ConfigSheet {
+	if values == nil {
+		values = make(map[string]string)
+	}
+	return &ConfigSheet{
+		Entity:  NewEntity(name, description),
+		Schema:  schema,
+		Values:  values,
+		Extends: []string{},
+	}
+}
+
+// NewConfigSheetForProject creates a config sheet associated with a project environment
+func NewConfigSheetForProject(name, description string, schema SchemaReference,
+	projectUUID, envName string, values map[string]string) *ConfigSheet {
+	sheet := NewConfigSheet(name, description, schema, values)
+	sheet.Project = projectUUID
+	sheet.Environment = envName
+	return sheet
+}
+
+// IsStandalone returns true if this config sheet is not associated with a project
+func (cs *ConfigSheet) IsStandalone() bool {
+	return cs.Project == ""
+}
+
+// IsProjectEnvironment returns true if this config sheet is associated with a project environment
+func (cs *ConfigSheet) IsProjectEnvironment() bool {
+	return cs.Project != "" && cs.Environment != ""
+}
+
+// EntitySummary represents a lightweight summary of an entity for index.json files
+type EntitySummary struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Remote      string    `json:"remote,omitempty"`
+	Local       bool      `json:"local"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// Index represents the structure of index.json files for entity management
+// Provides fast name-to-UUID resolution and entity summaries
+type Index struct {
+	NameToID  map[string]string        `json:"name_to_id"` // Map name -> UUID
+	Summaries map[string]EntitySummary `json:"summaries"`  // Map UUID -> EntitySummary
+}
+
+// NewIndex creates a new empty index
+func NewIndex() *Index {
+	return &Index{
+		NameToID:  make(map[string]string),
+		Summaries: make(map[string]EntitySummary),
+	}
+}
+
+// AddEntity adds an entity to the index
+func (idx *Index) AddEntity(entity Entity) {
+	idx.NameToID[entity.Name] = entity.ID
+	idx.Summaries[entity.ID] = EntitySummary{
+		Name:        entity.Name,
+		Description: entity.Description,
+		Remote:      entity.Remote,
+		Local:       entity.Local,
+		CreatedAt:   entity.CreatedAt,
+		UpdatedAt:   entity.UpdatedAt,
+	}
+}
+
+// RemoveEntity removes an entity from the index
+func (idx *Index) RemoveEntity(nameOrUUID string) {
+	// Try to resolve UUID first
+	uuid := nameOrUUID
+	if resolvedUUID, exists := idx.NameToID[nameOrUUID]; exists {
+		uuid = resolvedUUID
+		delete(idx.NameToID, nameOrUUID)
+	}
+
+	// Remove from summaries
+	delete(idx.Summaries, uuid)
+
+	// Remove any other name mappings to this UUID
+	for name, id := range idx.NameToID {
+		if id == uuid {
+			delete(idx.NameToID, name)
+		}
+	}
+}
+
+// ResolveUUID resolves a name or UUID to a UUID
+func (idx *Index) ResolveUUID(nameOrUUID string) (string, bool) {
+	// If it's already a UUID and exists in summaries, return it
+	if _, exists := idx.Summaries[nameOrUUID]; exists {
+		return nameOrUUID, true
+	}
+
+	// Try to resolve as name
+	if uuid, exists := idx.NameToID[nameOrUUID]; exists {
+		return uuid, true
+	}
+
+	return "", false
+}
+
+// GetSummary gets the summary for an entity by name or UUID
+func (idx *Index) GetSummary(nameOrUUID string) (EntitySummary, bool) {
+	uuid, exists := idx.ResolveUUID(nameOrUUID)
+	if !exists {
+		return EntitySummary{}, false
+	}
+
+	summary, exists := idx.Summaries[uuid]
+	return summary, exists
+}
+
+// ListSummaries returns all entity summaries
+func (idx *Index) ListSummaries() []EntitySummary {
+	summaries := make([]EntitySummary, 0, len(idx.Summaries))
+	for _, summary := range idx.Summaries {
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+// Validator handles schema validation logic with the new architecture
 type Validator struct {
 	compiledRegexes map[string]*regexp.Regexp
-	storage         SchemaStorage // Interface for loading schemas
+	storage         Storage // Interface for loading entities
 }
 
-// SchemaStorage interface for loading schemas
-type SchemaStorage interface {
-	LoadSchema(name string) (*Schema, error)
-	LoadConfigSheet(projectName, envName string) (*ConfigSheet, error)
+// Storage interface for loading entities with UUID support
+// This will be implemented in the storage layer refactoring (Phase 2)
+type Storage interface {
+	// Entity resolution
+	ResolveUUID(entityType, nameOrUUID string) (string, error)
+
+	// Schema operations
+	LoadSchema(nameOrUUID string) (*Schema, error)
+	SaveSchema(schema *Schema) error
+	ListSchemas() ([]*EntitySummary, error)
+
+	// Project operations
+	LoadProject(nameOrUUID string) (*Project, error)
+	SaveProject(project *Project) error
+	ListProjects() ([]*EntitySummary, error)
+
+	// Config sheet operations
+	LoadConfigSheet(nameOrUUID string) (*ConfigSheet, error)
+	SaveConfigSheet(sheet *ConfigSheet) error
+	ListConfigSheets(filters map[string]string) ([]*EntitySummary, error)
+
+	// Index operations
+	LoadIndex(entityType string) (*Index, error)
+	SaveIndex(entityType string, index *Index) error
 }
 
 // NewValidator creates a new validator instance
-func NewValidator(storage SchemaStorage) *Validator {
+func NewValidator(storage Storage) *Validator {
 	return &Validator{
 		compiledRegexes: make(map[string]*regexp.Regexp),
 		storage:         storage,
@@ -120,22 +370,22 @@ func (v *Validator) ValidateValue(variable *Variable, value string) error {
 
 // resolveSchema resolves a schema with all its inherited variables
 func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Schema, error) {
-	if visited[schema.Name] {
+	if visited[schema.ID] {
 		return nil, fmt.Errorf("circular dependency detected in schema %s", schema.Name)
 	}
-	visited[schema.Name] = true
+	visited[schema.ID] = true
 
 	resolved := &Schema{
-		Name:      schema.Name,
+		Entity:    schema.Entity,
 		Extends:   schema.Extends,
 		Variables: make([]Variable, 0),
 	}
 
 	// Resolve extended schemas first
-	for _, extendName := range schema.Extends {
-		extendSchema, err := v.storage.LoadSchema(extendName)
+	for _, extendNameOrUUID := range schema.Extends {
+		extendSchema, err := v.storage.LoadSchema(extendNameOrUUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load extended schema %s: %w", extendName, err)
+			return nil, fmt.Errorf("failed to load extended schema %s: %w", extendNameOrUUID, err)
 		}
 
 		// Recursively resolve the extended schema
@@ -167,51 +417,44 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 }
 
 // resolveConfigSheet resolves a config sheet with all inherited values
-//
-//nolint:unparam // schema parameter used in recursive calls
 func (v *Validator) resolveConfigSheet(
-	config *ConfigSheet, schema *Schema, visited map[string]bool,
+	sheet *ConfigSheet, schema *Schema, visited map[string]bool,
 ) (*ConfigSheet, error) {
-	if visited[config.ProjectName+":"+config.EnvName] {
-		return nil, fmt.Errorf("circular dependency detected in config %s:%s", config.ProjectName, config.EnvName)
+	if visited[sheet.ID] {
+		return nil, fmt.Errorf("circular dependency detected in config sheet %s", sheet.Name)
 	}
-	visited[config.ProjectName+":"+config.EnvName] = true
+	visited[sheet.ID] = true
 
 	resolved := &ConfigSheet{
-		ProjectName: config.ProjectName,
-		EnvName:     config.EnvName,
-		Schema:      config.Schema,
-		Extends:     config.Extends,
+		Entity:      sheet.Entity,
+		Schema:      sheet.Schema,
+		Project:     sheet.Project,
+		Environment: sheet.Environment,
+		Extends:     sheet.Extends,
 		Values:      make(map[string]string),
 	}
 
-	// Resolve extended projects first
-	for _, extendName := range config.Extends {
-		parts := strings.Split(extendName, ":")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid extend format %s, should be project:env", extendName)
-		}
-		projectName, envName := parts[0], parts[1]
-
-		extendConfig, err := v.storage.LoadConfigSheet(projectName, envName)
+	// Resolve extended config sheets first
+	for _, extendNameOrUUID := range sheet.Extends {
+		extendSheet, err := v.storage.LoadConfigSheet(extendNameOrUUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load extended config %s:%s: %w", projectName, envName, err)
+			return nil, fmt.Errorf("failed to load extended config sheet %s: %w", extendNameOrUUID, err)
 		}
 
-		// Recursively resolve the extended config
-		resolvedExtend, err := v.resolveConfigSheet(extendConfig, schema, visited)
+		// Recursively resolve the extended config sheet
+		resolvedExtend, err := v.resolveConfigSheet(extendSheet, schema, visited)
 		if err != nil {
 			return nil, err
 		}
 
-		// Add values from extended config
+		// Add values from extended config sheet
 		for k, v := range resolvedExtend.Values {
 			resolved.Values[k] = v
 		}
 	}
 
-	// Add/override with current config's values
-	for k, v := range config.Values {
+	// Add/override with current sheet's values
+	for k, v := range sheet.Values {
 		resolved.Values[k] = v
 	}
 
@@ -241,9 +484,30 @@ func (v *Validator) ValidateSchema(schema *Schema) error {
 }
 
 // ValidateConfigSheet validates a config sheet against its schema
-func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet, schema *Schema) error {
-	if sheet.ProjectName == "" {
-		return fmt.Errorf("project name cannot be empty")
+func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
+	if sheet.Name == "" {
+		return fmt.Errorf("config sheet name cannot be empty")
+	}
+
+	// Load schema based on reference type
+	var schema *Schema
+	var err error
+
+	if sheet.Schema.IsReference() {
+		// Load referenced schema
+		schema, err = v.storage.LoadSchema(sheet.Schema.Ref)
+		if err != nil {
+			return fmt.Errorf("failed to load referenced schema: %w", err)
+		}
+	} else if sheet.Schema.IsInline() {
+		// Create temporary schema from inline definition
+		variables := make([]Variable, 0, len(sheet.Schema.Variables))
+		for _, variable := range sheet.Schema.Variables {
+			variables = append(variables, variable)
+		}
+		schema = NewSchema("inline", "inline schema", variables, nil)
+	} else {
+		return fmt.Errorf("config sheet must have either schema reference or inline schema")
 	}
 
 	// Resolve schema inheritance
@@ -281,4 +545,18 @@ func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet, schema *Schema) erro
 	sheet.Values = resolvedSheet.Values
 
 	return nil
+}
+
+// ConfigSheetFilter provides filtering options for config sheet queries
+type ConfigSheetFilter struct {
+	ProjectGUID    string // Filter by project UUID
+	Environment    string // Filter by environment name
+	StandaloneOnly bool   // Filter for standalone sheets only (no project association)
+}
+
+// ConfigSheetSummary provides summary information about config sheets for listing
+type ConfigSheetSummary struct {
+	EntitySummary        // Embedded summary
+	ProjectGUID   string `json:"project_guid,omitempty"` // Associated project UUID
+	Environment   string `json:"environment,omitempty"`  // Environment name if applicable
 }

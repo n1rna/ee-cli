@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# menv installer script
-# Usage: curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh
+# ee installer script
+# Usage: curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh
 
 set -e
 
 # Configuration
-REPO="n1rna/menv"
-BINARY_NAME="menv"
+REPO="n1rna/ee-cli"
+BINARY_NAME="ee"
 VERSION=""  # Will be set to latest if empty
 
 # Colors for output
@@ -26,14 +26,14 @@ debug() { [ "${DEBUG:-}" ] && printf "${BLUE}[DEBUG]${NC} %s\n" "$1" || true; }
 # Detect OS and architecture
 detect_platform() {
     local os arch
-    
+
     case "$(uname -s)" in
         Linux*) os="linux" ;;
         Darwin*) os="darwin" ;;
         CYGWIN*|MINGW*|MSYS*) os="windows" ;;
         *) error "Unsupported operating system: $(uname -s)"; exit 1 ;;
     esac
-    
+
     case "$(uname -m)" in
         x86_64|amd64) arch="amd64" ;;
         arm64|aarch64) arch="arm64" ;;
@@ -41,10 +41,10 @@ detect_platform() {
         i386|i686) arch="386" ;;
         *) error "Unsupported architecture: $(uname -m)"; exit 1 ;;
     esac
-    
+
     PLATFORM="${os}-${arch}"
     debug "Detected platform: $PLATFORM"
-    
+
     # Set binary suffix for Windows
     if [ "$os" = "windows" ]; then
         BINARY_SUFFIX=".exe"
@@ -59,9 +59,9 @@ get_latest_version() {
         debug "Using specified version: $VERSION"
         return
     fi
-    
+
     log "Fetching latest version..."
-    
+
     if command -v curl >/dev/null 2>&1; then
         VERSION=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     elif command -v wget >/dev/null 2>&1; then
@@ -70,21 +70,21 @@ get_latest_version() {
         error "Neither curl nor wget is available. Please install one of them."
         exit 1
     fi
-    
+
     if [ -z "$VERSION" ]; then
         error "Failed to get the latest version"
         exit 1
     fi
-    
+
     debug "Latest version: $VERSION"
 }
 
 # Check if version exists
 check_version_exists() {
     local url="https://api.github.com/repos/$REPO/releases/tags/$VERSION"
-    
+
     debug "Checking if version $VERSION exists..."
-    
+
     if command -v curl >/dev/null 2>&1; then
         if ! curl -sf "$url" >/dev/null; then
             error "Version $VERSION not found"
@@ -100,17 +100,17 @@ check_version_exists() {
 
 # Download and install
 install_binary() {
-    local tmp_dir="/tmp/menv-install-$$"
+    local tmp_dir="/tmp/ee-install-$$"
     local binary_name="${BINARY_NAME}-${PLATFORM}${BINARY_SUFFIX}"
     local download_url="https://github.com/$REPO/releases/download/$VERSION/$binary_name"
-    
-    log "Downloading menv $VERSION for $PLATFORM..."
+
+    log "Downloading ee $VERSION for $PLATFORM..."
     debug "Download URL: $download_url"
-    
+
     # Create temporary directory
     mkdir -p "$tmp_dir"
     trap 'rm -rf "$tmp_dir"' EXIT
-    
+
     # Download binary
     if command -v curl >/dev/null 2>&1; then
         if ! curl -sL "$download_url" -o "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"; then
@@ -123,10 +123,10 @@ install_binary() {
             exit 1
         fi
     fi
-    
+
     # Make binary executable
     chmod +x "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"
-    
+
     # Determine install location
     local install_dir
     if [ -w "/usr/local/bin" ]; then
@@ -141,32 +141,32 @@ install_binary() {
         mkdir -p "$install_dir"
         warn "Created directory $install_dir - make sure it's in your PATH"
     fi
-    
+
     # Install binary
     log "Installing to $install_dir/$BINARY_NAME$BINARY_SUFFIX..."
-    
+
     if ! cp "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX" "$install_dir/$BINARY_NAME$BINARY_SUFFIX"; then
         error "Failed to install binary to $install_dir"
         warn "You may need to run with sudo or choose a different install location"
         exit 1
     fi
-    
+
     # Verify installation
     if "$install_dir/$BINARY_NAME$BINARY_SUFFIX" --version >/dev/null 2>&1; then
-        log "✅ menv $VERSION installed successfully!"
+        log "✅ ee $VERSION installed successfully!"
         log "📍 Location: $install_dir/$BINARY_NAME$BINARY_SUFFIX"
-        
+
         # Check if binary is in PATH
         if command -v "$BINARY_NAME" >/dev/null 2>&1; then
-            log "🎉 You can now use 'menv' from anywhere!"
+            log "🎉 You can now use 'ee' from anywhere!"
         else
             warn "⚠️  $install_dir is not in your PATH"
             warn "Add this to your shell profile:"
             warn "export PATH=\"$install_dir:\$PATH\""
         fi
-        
+
         log ""
-        log "Get started with: menv --help"
+        log "Get started with: ee --help"
         log "Documentation: https://github.com/$REPO"
     else
         error "Installation verification failed"
@@ -180,13 +180,13 @@ verify_checksum() {
         warn "Skipping checksum verification"
         return
     fi
-    
-    local tmp_dir="/tmp/menv-install-$$"
+
+    local tmp_dir="/tmp/ee-install-$$"
     local binary_name="${BINARY_NAME}-${PLATFORM}${BINARY_SUFFIX}"
     local checksums_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
-    
+
     log "Verifying checksum..."
-    
+
     # Download checksums
     if command -v curl >/dev/null 2>&1; then
         curl -sL "$checksums_url" -o "$tmp_dir/checksums.txt"
@@ -196,19 +196,19 @@ verify_checksum() {
         warn "Cannot verify checksum: neither curl nor wget available"
         return
     fi
-    
+
     # Verify checksum
     if command -v sha256sum >/dev/null 2>&1; then
         local expected_checksum=$(grep "$binary_name" "$tmp_dir/checksums.txt" | cut -d' ' -f1)
         local actual_checksum=$(sha256sum "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX" | cut -d' ' -f1)
-        
+
         if [ "$expected_checksum" != "$actual_checksum" ]; then
             error "Checksum verification failed!"
             error "Expected: $expected_checksum"
             error "Actual: $actual_checksum"
             exit 1
         fi
-        
+
         log "✅ Checksum verified"
     else
         warn "sha256sum not available - skipping checksum verification"
@@ -217,8 +217,8 @@ verify_checksum() {
 
 # Main installation flow
 main() {
-    log "🚀 Installing menv CLI tool..."
-    
+    log "🚀 Installing ee CLI tool..."
+
     # Parse arguments
     while [ $# -gt 0 ]; do
         case $1 in
@@ -236,7 +236,7 @@ main() {
                 ;;
             --help|-h)
                 cat << EOF
-menv installer script
+ee installer script
 
 Usage: $0 [options]
 
@@ -261,7 +261,7 @@ EOF
                 ;;
         esac
     done
-    
+
     detect_platform
     get_latest_version
     check_version_exists

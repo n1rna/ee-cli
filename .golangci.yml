@@ -14,7 +14,7 @@ linters-settings:
     min-complexity: 15
 
   goimports:
-    local-prefixes: github.com/n1rna/menv
+    local-prefixes: github.com/n1rna/ee-cli
 
   misspell:
     locale: US

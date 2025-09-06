@@ -61,7 +61,7 @@ jobs:
         echo "" >> release_body.txt
         echo "### Quick Install (Linux/macOS)" >> release_body.txt
         echo '```bash' >> release_body.txt
-        echo 'curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh' >> release_body.txt
+        echo 'curl -sSfL https://raw.githubusercontent.com/n1rna/ee-cli/main/install.sh | sh' >> release_body.txt
         echo '```' >> release_body.txt
         echo "" >> release_body.txt
         echo "### Manual Download" >> release_body.txt
@@ -78,9 +78,9 @@ jobs:
         name: Release v${{ steps.version.outputs.VERSION }}
         body_path: release_body.txt
         files: |
-          build/menv-linux-amd64
-          build/menv-windows-amd64.exe
-          build/menv-darwin-amd64
+          build/ee-linux-amd64
+          build/ee-windows-amd64.exe
+          build/ee-darwin-amd64
           build/checksums.txt
         draft: false
         prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}

@@ -1,6 +1,6 @@
-# Contributing to menv
+# Contributing to ee
 
-Thank you for your interest in contributing to menv! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to ee! This document provides guidelines for contributing to the project.
 
 ## Code of Conduct
 
@@ -11,8 +11,8 @@ By participating in this project, you agree to abide by our Code of Conduct. Ple
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/yourusername/menv.git
-   cd menv
+   git clone https://github.com/yourusername/ee.git
+   cd ee
    ```
 3. Install dependencies:
    ```bash
@@ -115,7 +115,7 @@ func TestFeature(t *testing.T) {
         },
         // ... more test cases
     }
-    
+
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             // test implementation
@@ -200,4 +200,4 @@ Contributors will be acknowledged in:
 - README.md contributors section
 - Git commit history
 
-Thank you for contributing to menv!
+Thank you for contributing to ee!

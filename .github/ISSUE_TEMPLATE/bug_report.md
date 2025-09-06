@@ -24,7 +24,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
  - OS: [e.g. Ubuntu 20.04, macOS 12.0, Windows 11]
- - menv Version: [e.g. v1.0.0] (run `menv version`)
+ - ee Version: [e.g. v1.0.0] (run `ee version`)
  - Go Version: [e.g. 1.21.0] (if building from source)
 
 **Configuration Files**

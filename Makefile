@@ -1,4 +1,4 @@
-BINARY_NAME=menv
+BINARY_NAME=ee
 BUILD_DIR=build
 COVERAGE_DIR=coverage
 VERSION?=0.1.0
@@ -26,7 +26,7 @@ all: clean build test ## Run clean, build, and test
 build: ## Build the binary
 	@echo "Building..."
 	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/menv
+	$(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/ee
 
 clean: ## Clean build directory
 	@echo "Cleaning..."
@@ -74,21 +74,21 @@ uninstall: ## Remove binary from $GOPATH/bin
 	@rm -f $(GOPATH)/bin/$(BINARY_NAME)
 
 dev: ## Run the application in development mode
-	@$(GORUN) ${LDFLAGS} ./cmd/menv
+	@$(GORUN) ${LDFLAGS} ./cmd/ee
 
 # Cross compilation targets
 .PHONY: build-linux build-windows build-darwin
 build-linux: ## Build for Linux
 	@echo "Building for Linux..."
-	@GOOS=linux GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/menv
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/ee
 
 build-windows: ## Build for Windows
 	@echo "Building for Windows..."
-	@GOOS=windows GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/menv
+	@GOOS=windows GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/ee
 
 build-darwin: ## Build for macOS
 	@echo "Building for macOS..."
-	@GOOS=darwin GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/menv
+	@GOOS=darwin GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/ee
 
 .PHONY: build-all
 build-all: build-linux build-windows build-darwin ## Build for all platforms

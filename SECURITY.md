@@ -11,7 +11,7 @@ We release patches for security vulnerabilities for the following versions:
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within menv, please send an email to security@example.com. All security vulnerabilities will be promptly addressed.
+If you discover a security vulnerability within dee, please send an email to security@example.com. All security vulnerabilities will be promptly addressed.
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
@@ -34,7 +34,7 @@ When reporting a vulnerability, please include:
 
 ### Environment Variable Storage
 
-- menv stores environment variables in plain text YAML files in `~/.menv/`
+- dee stores environment variables in plain text YAML files in `~/.dee/`
 - These files should be protected with appropriate file system permissions (0600)
 - Consider using encrypted storage solutions for highly sensitive environments
 
@@ -52,10 +52,10 @@ When reporting a vulnerability, please include:
 
 ### Best Practices
 
-1. **File Permissions**: Ensure your `~/.menv/` directory has restricted permissions
+1. **File Permissions**: Ensure your `~/.dee/` directory has restricted permissions
 2. **Backup Security**: If backing up configurations, ensure backups are encrypted
 3. **Access Control**: Limit access to configuration files containing sensitive data
-4. **Regular Updates**: Keep menv updated to the latest version
+4. **Regular Updates**: Keep dee updated to the latest version
 5. **Environment Separation**: Use separate schemas for different security contexts
 
 ## Vulnerability Disclosure Policy

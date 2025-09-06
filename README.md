@@ -1,6 +1,6 @@
-# menv - Environment Variable Manager with Schema Support
+# ee - Environment Variable Manager with Schema Support
 
-`menv` is a CLI tool that brings structure and validation to environment variable management. It enables teams to define, validate, and manage environment variables across different environments with schema-based validation and inheritance support.
+`ee` is a CLI tool that brings structure and validation to environment variable management. It enables teams to define, validate, and manage environment variables across different environments with schema-based validation and inheritance support.
 
 ## Features
 
@@ -22,61 +22,61 @@
 Install the latest version with a single command:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh
 ```
 
 ### Alternative Installation Methods
 
 ```bash
 # Using Go
-go install github.com/n1rna/menv/cmd/menv@latest
+go install github.com/n1rna/ee/cmd/ee@latest
 
 # Download specific version
-curl -sSfL https://raw.githubusercontent.com/n1rna/menv/main/install.sh | sh -s -- --version v1.0.0
+curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh -s -- --version v1.0.0
 
 # From source
-git clone https://github.com/n1rna/menv.git
-cd menv
+git clone https://github.com/n1rna/ee.git
+cd ee
 make install
 ```
 
 ### Manual Installation
 
-1. Download the appropriate binary for your platform from the [releases page](https://github.com/n1rna/menv/releases)
-2. Make it executable: `chmod +x menv`
-3. Move it to your PATH: `sudo mv menv /usr/local/bin/`
+1. Download the appropriate binary for your platform from the [releases page](https://github.com/n1rna/ee/releases)
+2. Make it executable: `chmod +x ee`
+3. Move it to your PATH: `sudo mv ee /usr/local/bin/`
 
 ### Verify Installation
 
 ```bash
-menv version
+ee version
 ```
 
 ## Quick Start
 
 1. Create a new project with a schema:
 ```bash
-menv new myproject
+ee new myproject
 ```
 
 2. Create different environments:
 ```bash
-menv new myproject --env development
-menv new myproject --env production
+ee new myproject --env development
+ee new myproject --env production
 ```
 
 3. Edit environment variables:
 ```bash
-menv edit myproject --env development
+ee edit myproject --env development
 ```
 
 4. Apply variables and run commands:
 ```bash
 # Start a shell with the environment loaded
-menv apply myproject --env development
+ee apply myproject --env development
 
 # Run a command with the environment
-menv apply myproject --env development -- npm start
+ee apply myproject --env development -- npm start
 ```
 
 ## Schema Example
@@ -89,12 +89,12 @@ variables:
     regex: "^https?://.*$"
     default: "http://localhost:8000"
     required: true
-  
+
   - name: DEBUG
     type: boolean
     default: "false"
     required: true
-  
+
   - name: API_KEY
     type: string
     required: true
@@ -102,23 +102,23 @@ variables:
 
 ## Commands
 
-- `menv new [project-name]` - Create a new project
-- `menv new [project-name] --env [env-name]` - Add new environment
-- `menv edit [project-name] --env [env-name]` - Edit environment variables
-- `menv apply [project-name] --env [env-name] [-- command]` - Apply variables
-- `menv export [project-name] --env [env-name] -f [format]` - Export configuration
-- `menv set [project-name] --env [env-name] KEY=VALUE...` - Set variables
-- `menv env [-e envfile] [-- command]` - Apply from .env file
+- `ee new [project-name]` - Create a new project
+- `ee new [project-name] --env [env-name]` - Add new environment
+- `ee edit [project-name] --env [env-name]` - Edit environment variables
+- `ee apply [project-name] --env [env-name] [-- command]` - Apply variables
+- `ee export [project-name] --env [env-name] -f [format]` - Export configuration
+- `ee set [project-name] --env [env-name] KEY=VALUE...` - Set variables
+- `ee env [-e envfile] [-- command]` - Apply from .env file
 
 ## Configuration
 
-`menv` stores all data in `~/.menv/` by default. You can override this with:
-- `MENV_HOME` environment variable
+`ee` stores all data in `~/.ee/` by default. You can override this with:
+- `ee_HOME` environment variable
 - `--dir` flag in commands
 
 Directory structure:
 ```
-~/.menv/
+~/.ee/
 ├── schemas/           # Schema definitions
 └── projects/         # Project configurations
     └── myproject/

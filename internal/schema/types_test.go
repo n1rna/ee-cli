@@ -1,355 +1,296 @@
-// internal/schema/types_test.go
 package schema
 
 import (
-	"fmt"
 	"testing"
+	"time"
 )
 
-// Mock storage implementation for testing
-type mockStorage struct {
-	schemas      map[string]*Schema
-	configSheets map[string]*ConfigSheet
-}
-
-func newMockStorage() *mockStorage {
-	return &mockStorage{
-		schemas:      make(map[string]*Schema),
-		configSheets: make(map[string]*ConfigSheet),
+func TestNewEntity(t *testing.T) {
+	name := "test-entity"
+	description := "Test entity description"
+	
+	entity := NewEntity(name, description)
+	
+	if entity.ID == "" {
+		t.Error("Entity ID should not be empty")
+	}
+	
+	if entity.Name != name {
+		t.Errorf("Expected name %s, got %s", name, entity.Name)
+	}
+	
+	if entity.Description != description {
+		t.Errorf("Expected description %s, got %s", description, entity.Description)
+	}
+	
+	if !entity.Local {
+		t.Error("New entity should be local by default")
+	}
+	
+	if entity.Remote != "" {
+		t.Error("New entity should not have remote URL by default")
+	}
+	
+	// Check that timestamps are recent (within last minute)
+	now := time.Now()
+	if now.Sub(entity.CreatedAt) > time.Minute {
+		t.Error("CreatedAt timestamp should be recent")
+	}
+	
+	if now.Sub(entity.UpdatedAt) > time.Minute {
+		t.Error("UpdatedAt timestamp should be recent")
 	}
 }
 
-func (m *mockStorage) LoadSchema(name string) (*Schema, error) {
-	if schema, ok := m.schemas[name]; ok {
-		return schema, nil
-	}
-	return nil, fmt.Errorf("schema not found: %s", name)
-}
-
-func (m *mockStorage) LoadConfigSheet(projectName, envName string) (*ConfigSheet, error) {
-	key := fmt.Sprintf("%s:%s", projectName, envName)
-	if config, ok := m.configSheets[key]; ok {
-		return config, nil
-	}
-	return nil, fmt.Errorf("config sheet not found: %s", key)
-}
-
-func TestValidateSchema(t *testing.T) {
-	storage := newMockStorage()
-	validator := NewValidator(storage)
-
-	// Add base schema for inheritance tests
-	storage.schemas["base-schema"] = &Schema{
-		Name: "base-schema",
-		Variables: []Variable{
-			{
-				Name:     "INHERITED_VAR",
-				Type:     "string",
-				Required: true,
-			},
+func TestNewSchema(t *testing.T) {
+	variables := []Variable{
+		{
+			Name:     "DATABASE_URL",
+			Title:    "Database Connection URL",
+			Type:     "url",
+			Required: true,
+		},
+		{
+			Name:     "DEBUG",
+			Type:     "boolean",
+			Default:  "false",
+			Required: false,
 		},
 	}
-
-	tests := []struct {
-		name    string
-		schema  Schema
-		wantErr bool
-	}{
-		{
-			name: "valid schema",
-			schema: Schema{
-				Name: "test-schema",
-				Variables: []Variable{
-					{
-						Name:     "BASE_URL",
-						Type:     "string",
-						Regex:    "^https?://.*$",
-						Default:  "http://localhost:8000",
-						Required: true,
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid schema with inheritance",
-			schema: Schema{
-				Name:    "inherited-schema",
-				Extends: []string{"base-schema"},
-				Variables: []Variable{
-					{
-						Name:     "NEW_VAR",
-						Type:     "string",
-						Required: true,
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid regex",
-			schema: Schema{
-				Name: "invalid-regex",
-				Variables: []Variable{
-					{
-						Name:  "TEST_VAR",
-						Type:  "string",
-						Regex: "[Invalid Regex",
-					},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid type",
-			schema: Schema{
-				Name: "invalid-type",
-				Variables: []Variable{
-					{
-						Name: "TEST_VAR",
-						Type: "invalid_type",
-					},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "circular inheritance",
-			schema: Schema{
-				Name:    "circular-schema",
-				Extends: []string{"circular-schema"},
-				Variables: []Variable{
-					{
-						Name: "TEST_VAR",
-						Type: "string",
-					},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "non-existent parent schema",
-			schema: Schema{
-				Name:    "orphan-schema",
-				Extends: []string{"non-existent-schema"},
-				Variables: []Variable{
-					{
-						Name: "TEST_VAR",
-						Type: "string",
-					},
-				},
-			},
-			wantErr: true,
-		},
+	
+	extends := []string{"base-schema"}
+	
+	schema := NewSchema("api-schema", "API service schema", variables, extends)
+	
+	if schema.ID == "" {
+		t.Error("Schema ID should not be empty")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validator.ValidateSchema(&tt.schema)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateSchema() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	
+	if schema.Name != "api-schema" {
+		t.Errorf("Expected name 'api-schema', got %s", schema.Name)
+	}
+	
+	if len(schema.Variables) != 2 {
+		t.Errorf("Expected 2 variables, got %d", len(schema.Variables))
+	}
+	
+	if len(schema.Extends) != 1 {
+		t.Errorf("Expected 1 extended schema, got %d", len(schema.Extends))
+	}
+	
+	// Test NewSchema with nil extends
+	schema2 := NewSchema("simple-schema", "Simple schema", variables, nil)
+	if len(schema2.Extends) != 0 {
+		t.Errorf("Expected 0 extended schemas for nil extends, got %d", len(schema2.Extends))
 	}
 }
 
-func TestValidateConfigSheet(t *testing.T) {
-	storage := newMockStorage()
-	validator := NewValidator(storage)
-
-	// Add base schema and config for inheritance tests
-	baseSchema := &Schema{
-		Name: "base-schema",
-		Variables: []Variable{
-			{
-				Name:     "SHARED_VAR",
-				Type:     "string",
-				Required: true,
-			},
-		},
+func TestNewProject(t *testing.T) {
+	schemaID := "550e8400-e29b-41d4-a716-446655440000"
+	
+	project := NewProject("my-api", "My API project", schemaID)
+	
+	if project.ID == "" {
+		t.Error("Project ID should not be empty")
 	}
-	storage.schemas["base-schema"] = baseSchema
-
-	testSchema := &Schema{
-		Name:    "test-schema",
-		Extends: []string{"base-schema"},
-		Variables: []Variable{
-			{
-				Name:     "BASE_URL",
-				Type:     "string",
-				Regex:    "^https?://.*$",
-				Default:  "http://localhost:8000",
-				Required: true,
-			},
-			{
-				Name:     "DEBUG",
-				Type:     "boolean",
-				Required: true,
-			},
-		},
+	
+	if project.Name != "my-api" {
+		t.Errorf("Expected name 'my-api', got %s", project.Name)
 	}
-	storage.schemas["test-schema"] = testSchema
-
-	// Add base config
-	storage.configSheets["base:development"] = &ConfigSheet{
-		ProjectName: "base",
-		EnvName:     "development",
-		Schema:      "base-schema",
-		Values: map[string]string{
-			"SHARED_VAR": "shared-value",
-		},
+	
+	if project.Schema != schemaID {
+		t.Errorf("Expected schema ID %s, got %s", schemaID, project.Schema)
 	}
-
-	tests := []struct {
-		name        string
-		configSheet ConfigSheet
-		wantErr     bool
-	}{
-		{
-			name: "valid config",
-			configSheet: ConfigSheet{
-				ProjectName: "test-project",
-				EnvName:     "development",
-				Schema:      "test-schema",
-				Values: map[string]string{
-					"BASE_URL":   "http://localhost:8000",
-					"DEBUG":      "true",
-					"SHARED_VAR": "inherited-value",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid config with inheritance",
-			configSheet: ConfigSheet{
-				ProjectName: "test-project",
-				EnvName:     "development",
-				Schema:      "test-schema",
-				Extends:     []string{"base:development"},
-				Values: map[string]string{
-					"BASE_URL": "http://localhost:8000",
-					"DEBUG":    "true",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing required value",
-			configSheet: ConfigSheet{
-				ProjectName: "test-project",
-				EnvName:     "development",
-				Schema:      "test-schema",
-				Values: map[string]string{
-					"BASE_URL": "http://localhost:8000",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid URL format",
-			configSheet: ConfigSheet{
-				ProjectName: "test-project",
-				EnvName:     "development",
-				Schema:      "test-schema",
-				Values: map[string]string{
-					"BASE_URL": "invalid-url",
-					"DEBUG":    "true",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "circular inheritance",
-			configSheet: ConfigSheet{
-				ProjectName: "circular",
-				EnvName:     "development",
-				Schema:      "test-schema",
-				Extends:     []string{"circular:development"},
-				Values:      map[string]string{},
-			},
-			wantErr: true,
-		},
+	
+	if project.Environments == nil {
+		t.Error("Environments map should be initialized")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validator.ValidateConfigSheet(&tt.configSheet, testSchema)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateConfigSheet() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			// For inheritance tests, verify that inherited values are present
-			if !tt.wantErr && len(tt.configSheet.Extends) > 0 {
-				if value, exists := tt.configSheet.Values["SHARED_VAR"]; !exists {
-					t.Error("Inherited value SHARED_VAR not present")
-				} else if value != "shared-value" {
-					t.Errorf("Expected inherited value 'shared-value', got '%s'", value)
-				}
-			}
-		})
+	
+	if len(project.Environments) != 0 {
+		t.Errorf("Expected 0 environments initially, got %d", len(project.Environments))
 	}
 }
 
-func TestSchemaInheritanceResolution(t *testing.T) {
-	storage := newMockStorage()
-	validator := NewValidator(storage)
+func TestProjectAddEnvironment(t *testing.T) {
+	project := NewProject("my-api", "My API project", "schema-id")
+	
+	project.AddEnvironment("development")
+	
+	if len(project.Environments) != 1 {
+		t.Errorf("Expected 1 environment after adding, got %d", len(project.Environments))
+	}
+	
+	env, exists := project.Environments["development"]
+	if !exists {
+		t.Error("Development environment should exist")
+	}
+	
+	if env.Name != "development" {
+		t.Errorf("Expected environment name 'development', got %s", env.Name)
+	}
+}
 
-	// Set up a chain of schemas
-	storage.schemas["base"] = &Schema{
-		Name: "base",
-		Variables: []Variable{
-			{Name: "BASE_VAR", Type: "string", Default: "base-value"},
+func TestSchemaReference(t *testing.T) {
+	// Test reference-based SchemaReference
+	refSchema := SchemaReference{
+		Ref: "#/schemas/550e8400-e29b-41d4-a716-446655440000",
+	}
+	
+	if !refSchema.IsReference() {
+		t.Error("Should be detected as reference")
+	}
+	
+	if refSchema.IsInline() {
+		t.Error("Should not be detected as inline")
+	}
+	
+	// Test inline SchemaReference
+	inlineSchema := SchemaReference{
+		Variables: map[string]Variable{
+			"PORT": {
+				Name: "PORT",
+				Type: "number",
+				Default: "3000",
+			},
 		},
 	}
+	
+	if !inlineSchema.IsInline() {
+		t.Error("Should be detected as inline")
+	}
+	
+	if inlineSchema.IsReference() {
+		t.Error("Should not be detected as reference")
+	}
+}
 
-	storage.schemas["middle"] = &Schema{
-		Name:    "middle",
-		Extends: []string{"base"},
-		Variables: []Variable{
-			{Name: "MIDDLE_VAR", Type: "string", Required: true},
-			{Name: "BASE_VAR", Type: "string", Default: "override-value"}, // Override
-		},
+func TestNewConfigSheet(t *testing.T) {
+	schemaRef := SchemaReference{
+		Ref: "#/schemas/api-schema",
 	}
+	
+	values := map[string]string{
+		"DATABASE_URL": "postgresql://localhost:5432/myapi",
+		"DEBUG":        "true",
+	}
+	
+	sheet := NewConfigSheet("my-config", "My configuration", schemaRef, values)
+	
+	if sheet.ID == "" {
+		t.Error("ConfigSheet ID should not be empty")
+	}
+	
+	if sheet.Name != "my-config" {
+		t.Errorf("Expected name 'my-config', got %s", sheet.Name)
+	}
+	
+	if !sheet.Schema.IsReference() {
+		t.Error("Schema should be reference-based")
+	}
+	
+	if len(sheet.Values) != 2 {
+		t.Errorf("Expected 2 values, got %d", len(sheet.Values))
+	}
+	
+	if sheet.Values["DATABASE_URL"] != values["DATABASE_URL"] {
+		t.Error("DATABASE_URL value mismatch")
+	}
+	
+	if len(sheet.Extends) != 0 {
+		t.Errorf("Expected 0 extends initially, got %d", len(sheet.Extends))
+	}
+}
 
-	storage.schemas["leaf"] = &Schema{
-		Name:    "leaf",
-		Extends: []string{"middle"},
-		Variables: []Variable{
-			{Name: "LEAF_VAR", Type: "string"},
-		},
+func TestConfigSheetTypes(t *testing.T) {
+	// Test standalone config sheet
+	standaloneSheet := NewConfigSheet("standalone", "Standalone sheet", 
+		SchemaReference{Ref: "#/schemas/test"}, nil)
+	
+	if !standaloneSheet.IsStandalone() {
+		t.Error("Should be detected as standalone")
 	}
+	
+	if standaloneSheet.IsProjectEnvironment() {
+		t.Error("Should not be detected as project environment")
+	}
+	
+	// Test project environment config sheet
+	projectSheet := NewConfigSheetForProject("project-dev", "Project dev sheet",
+		SchemaReference{Ref: "#/schemas/test"}, "project-uuid", "development", nil)
+	
+	if projectSheet.IsStandalone() {
+		t.Error("Should not be detected as standalone")
+	}
+	
+	if !projectSheet.IsProjectEnvironment() {
+		t.Error("Should be detected as project environment")
+	}
+	
+	if projectSheet.Project != "project-uuid" {
+		t.Errorf("Expected project UUID 'project-uuid', got %s", projectSheet.Project)
+	}
+	
+	if projectSheet.Environment != "development" {
+		t.Errorf("Expected environment 'development', got %s", projectSheet.Environment)
+	}
+}
 
-	// Test resolution
-	leafSchema := storage.schemas["leaf"]
-	err := validator.ValidateSchema(leafSchema)
-	if err != nil {
-		t.Errorf("Failed to validate inherited schema chain: %v", err)
+func TestIndex(t *testing.T) {
+	index := NewIndex()
+	
+	if index.NameToID == nil {
+		t.Error("NameToID map should be initialized")
 	}
-
-	// Verify resolution order and overrides
-	resolved, err := validator.resolveSchema(leafSchema, make(map[string]bool))
-	if err != nil {
-		t.Fatalf("Failed to resolve schema: %v", err)
+	
+	if index.Summaries == nil {
+		t.Error("Summaries map should be initialized")
 	}
-
-	// Check if all variables are present
-	varMap := make(map[string]Variable)
-	for _, v := range resolved.Variables {
-		varMap[v.Name] = v
+	
+	// Test adding entity to index
+	entity := NewEntity("test-schema", "Test schema description")
+	index.AddEntity(entity)
+	
+	// Test name-to-UUID resolution
+	resolvedUUID, exists := index.ResolveUUID("test-schema")
+	if !exists {
+		t.Error("Should resolve name to UUID")
 	}
-
-	if _, exists := varMap["BASE_VAR"]; !exists {
-		t.Error("BASE_VAR not found in resolved schema")
+	
+	if resolvedUUID != entity.ID {
+		t.Errorf("Expected UUID %s, got %s", entity.ID, resolvedUUID)
 	}
-	if _, exists := varMap["MIDDLE_VAR"]; !exists {
-		t.Error("MIDDLE_VAR not found in resolved schema")
+	
+	// Test UUID-to-UUID resolution
+	resolvedUUID2, exists := index.ResolveUUID(entity.ID)
+	if !exists {
+		t.Error("Should resolve UUID to UUID")
 	}
-	if _, exists := varMap["LEAF_VAR"]; !exists {
-		t.Error("LEAF_VAR not found in resolved schema")
+	
+	if resolvedUUID2 != entity.ID {
+		t.Errorf("Expected UUID %s, got %s", entity.ID, resolvedUUID2)
 	}
-
-	// Check override value
-	if varMap["BASE_VAR"].Default != "override-value" {
-		t.Error("BASE_VAR override not applied correctly")
+	
+	// Test getting summary
+	summary, exists := index.GetSummary("test-schema")
+	if !exists {
+		t.Error("Should get summary by name")
+	}
+	
+	if summary.Name != entity.Name {
+		t.Errorf("Expected name %s, got %s", entity.Name, summary.Name)
+	}
+	
+	// Test listing summaries
+	summaries := index.ListSummaries()
+	if len(summaries) != 1 {
+		t.Errorf("Expected 1 summary, got %d", len(summaries))
+	}
+	
+	// Test removing entity
+	index.RemoveEntity("test-schema")
+	
+	_, exists = index.ResolveUUID("test-schema")
+	if exists {
+		t.Error("Entity should be removed from index")
 	}
 }
