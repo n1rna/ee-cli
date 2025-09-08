@@ -74,50 +74,22 @@ It supports schema validation, multiple environments, and inheritance.`,
 		Title: "Remote Operations:",
 	})
 
-	// Create commands and set group IDs
-	initCmd := command.NewInitCommand()
-	initCmd.GroupID = "global"
-
-	applyCmd := command.NewApplyCommand()
-	applyCmd.GroupID = "global"
-
-	uiCmd := command.NewUICommand()
-	uiCmd.GroupID = "global"
-
-	schemaCmd := command.NewSchemaCommand()
-	schemaCmd.GroupID = "entities"
-
-	sheetCmd := command.NewSheetCommand()
-	sheetCmd.GroupID = "entities"
-
-	projectCmd := command.NewProjectCommand()
-	projectCmd.GroupID = "entities"
-
-	pushCmd := command.NewPushCommand()
-	pushCmd.GroupID = "authenticated"
-
-	pullCmd := command.NewPullCommand()
-	pullCmd.GroupID = "authenticated"
-
-	remoteCmd := command.NewRemoteCommand()
-	remoteCmd.GroupID = "authenticated"
-
 	// Add commands organized by groups
 	rootCmd.AddCommand(
 		// Global Commands - basic project operations
-		initCmd,  // Project initialization
-		applyCmd, // Apply environment variables
-		uiCmd,    // Terminal user interface
+		command.NewInitCommand("global"),  // Project initialization
+		command.NewApplyCommand("global"), // Apply environment variables
+		command.NewUICommand("global"),    // Terminal user interface
 
 		// Entity Management - local entity operations
-		schemaCmd,  // Schema management
-		sheetCmd,   // Config sheet management
-		projectCmd, // Project management
+		command.NewSchemaCommand("entities"),  // Schema management
+		command.NewSheetCommand("entities"),   // Config sheet management
+		command.NewProjectCommand("entities"), // Project management
 
 		// Remote Operations - require authentication
-		pushCmd,   // Push to remote
-		pullCmd,   // Pull from remote
-		remoteCmd, // Remote configuration
+		command.NewPushCommand("authenticated"),   // Push to remote
+		command.NewPullCommand("authenticated"),   // Pull from remote
+		command.NewRemoteCommand("authenticated"), // Remote configuration
 	)
 
 	// Enable version flag

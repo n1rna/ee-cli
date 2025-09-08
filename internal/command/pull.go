@@ -17,7 +17,7 @@ type PullCommand struct {
 }
 
 // NewPullCommand creates a new ee pull command
-func NewPullCommand() *cobra.Command {
+func NewPullCommand(groupId string) *cobra.Command {
 	pc := &PullCommand{}
 
 	cmd := &cobra.Command{
@@ -39,7 +39,8 @@ Examples:
   # Force pull even if there are local changes
   ee pull --force
 `,
-		RunE: pc.Run,
+		RunE:    pc.Run,
+		GroupID: groupId,
 	}
 
 	cmd.Flags().BoolVar(&pc.dryRun, "dry-run", false,

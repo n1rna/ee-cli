@@ -21,7 +21,7 @@ type ProjectCommand struct {
 }
 
 // NewProjectCommand creates a new ee project command
-func NewProjectCommand() *cobra.Command {
+func NewProjectCommand(groupId string) *cobra.Command {
 	pc := &ProjectCommand{
 		reader: bufio.NewReader(os.Stdin),
 	}
@@ -32,6 +32,7 @@ func NewProjectCommand() *cobra.Command {
 		Long: `Create and manage projects for environment variable management.
 
 Projects contain multiple environments and can be synchronized with remote APIs.`,
+		GroupID: groupId,
 	}
 
 	// Add subcommands

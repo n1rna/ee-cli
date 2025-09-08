@@ -20,7 +20,7 @@ type PushCommand struct {
 }
 
 // NewPushCommand creates a new ee push command
-func NewPushCommand() *cobra.Command {
+func NewPushCommand(groupId string) *cobra.Command {
 	pc := &PushCommand{}
 
 	cmd := &cobra.Command{
@@ -47,8 +47,9 @@ Examples:
   # Force push even if remote has newer changes
   ee push --force
 `,
-		Args: cobra.MaximumNArgs(2),
-		RunE: pc.Run,
+		Args:    cobra.MaximumNArgs(2),
+		RunE:    pc.Run,
+		GroupID: groupId,
 	}
 
 	cmd.Flags().BoolVar(&pc.dryRun, "dry-run", false,

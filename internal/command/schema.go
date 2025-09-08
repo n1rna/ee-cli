@@ -20,7 +20,7 @@ type SchemaCommand struct {
 	reader *bufio.Reader
 }
 
-func NewSchemaCommand() *cobra.Command {
+func NewSchemaCommand(groupId string) *cobra.Command {
 	sc := &SchemaCommand{
 		reader: bufio.NewReader(os.Stdin),
 	}
@@ -32,6 +32,7 @@ func NewSchemaCommand() *cobra.Command {
 
 Schemas define the structure and validation rules for environment variables.
 Each variable can have a type, regex pattern, default value, and required flag.`,
+		GroupID: groupId,
 	}
 
 	// Add subcommands

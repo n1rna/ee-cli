@@ -24,7 +24,7 @@ type SheetCommand struct {
 }
 
 // NewSheetCommand creates a new ee sheet command
-func NewSheetCommand() *cobra.Command {
+func NewSheetCommand(groupId string) *cobra.Command {
 	sc := &SheetCommand{
 		reader: bufio.NewReader(os.Stdin),
 	}
@@ -36,6 +36,7 @@ func NewSheetCommand() *cobra.Command {
 
 Config sheets contain actual values for variables defined in schemas.
 They can be standalone or associated with projects and environments.`,
+		GroupID: groupId,
 	}
 
 	// Add subcommands

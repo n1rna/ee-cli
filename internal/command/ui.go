@@ -10,12 +10,13 @@ import (
 )
 
 // NewUICommand creates the UI command
-func NewUICommand() *cobra.Command {
+func NewUICommand(groupId string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "ui",
-		Short: "Launch interactive terminal interface",
-		Long:  "Launch the ee terminal user interface for managing schemas and projects through the API.",
-		RunE:  runUI,
+		Use:     "ui",
+		Short:   "Launch interactive terminal interface",
+		Long:    "Launch the ee terminal user interface for managing schemas and projects through the API.",
+		RunE:    runUI,
+		GroupID: groupId,
 	}
 }
 

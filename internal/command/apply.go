@@ -18,7 +18,7 @@ import (
 type ApplyCommand struct{}
 
 // NewApplyCommand creates a new ee apply command
-func NewApplyCommand() *cobra.Command {
+func NewApplyCommand(groupId string) *cobra.Command {
 	ac := &ApplyCommand{}
 
 	cmd := &cobra.Command{
@@ -45,8 +45,9 @@ Examples:
   # Show what would be applied without executing
   ee apply development --dry-run
 `,
-		Args: cobra.MinimumNArgs(1),
-		RunE: ac.Run,
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    ac.Run,
+		GroupID: groupId,
 	}
 
 	cmd.Flags().StringP("project", "p", "", "Project name (overrides auto-detection)")

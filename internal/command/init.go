@@ -22,7 +22,7 @@ type InitCommand struct {
 }
 
 // NewInitCommand creates a new ee init command
-func NewInitCommand() *cobra.Command {
+func NewInitCommand(groupId string) *cobra.Command {
 	ic := &InitCommand{}
 
 	cmd := &cobra.Command{
@@ -47,7 +47,8 @@ Examples:
   # Initialize with remote URL
   ee init --project my-api --remote https://api.ee.dev
 `,
-		RunE: ic.Run,
+		RunE:    ic.Run,
+		GroupID: groupId,
 	}
 
 	cmd.Flags().StringVar(&ic.projectName, "project", "",

@@ -11,7 +11,7 @@ import (
 type RemoteCommand struct{}
 
 // NewRemoteCommand creates a new ee remote command
-func NewRemoteCommand() *cobra.Command {
+func NewRemoteCommand(groupId string) *cobra.Command {
 	rc := &RemoteCommand{}
 
 	cmd := &cobra.Command{
@@ -38,8 +38,9 @@ Examples:
   # Clear remote URL
   ee remote --unset
 `,
-		Args: cobra.MaximumNArgs(1),
-		RunE: rc.Run,
+		Args:    cobra.MaximumNArgs(1),
+		RunE:    rc.Run,
+		GroupID: groupId,
 	}
 
 	cmd.Flags().Bool("unset", false, "Remove remote URL configuration")
