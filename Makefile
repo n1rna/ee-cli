@@ -1,10 +1,10 @@
 BINARY_NAME=ee
 BUILD_DIR=build
 COVERAGE_DIR=coverage
-VERSION?=0.1.0
+VERSION?=2.0.0
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-LDFLAGS=-ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}"
+LDFLAGS=-ldflags "-X main.version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}"
 
 # Go parameters
 GOCMD=go
