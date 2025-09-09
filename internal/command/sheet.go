@@ -6,16 +6,16 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/n1rna/ee-cli/internal/schema"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // SheetCommand handles the ee sheet command
@@ -250,14 +250,22 @@ func (sc *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 
 		// Check if environment already exists
 		if _, exists := project.Environments[envFlag]; exists {
-			return fmt.Errorf("environment '%s' already exists for project '%s'", envFlag, project.Name)
+			return fmt.Errorf(
+				"environment '%s' already exists for project '%s'",
+				envFlag,
+				project.Name,
+			)
 		}
 
 		sheetName = fmt.Sprintf("%s-%s", project.Name, envFlag)
 		projectAssociated = true
 		projectID = project.ID
 
-		fmt.Printf("Creating config sheet for project '%s' environment '%s'\n", project.Name, envFlag)
+		fmt.Printf(
+			"Creating config sheet for project '%s' environment '%s'\n",
+			project.Name,
+			envFlag,
+		)
 	} else if len(args) > 0 {
 		// Using provided sheet name
 		sheetName = args[0]
@@ -393,7 +401,11 @@ func (sc *SheetCommand) importFromEnvFile(filename string) (map[string]string, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", err)
+		}
+	}()
 
 	values := make(map[string]string)
 	scanner := bufio.NewScanner(file)
@@ -474,7 +486,11 @@ func (sc *SheetCommand) importFromJSONFile(filename string) (map[string]string, 
 }
 
 // collectValuesInteractively collects values from user input
-func (sc *SheetCommand) collectValuesInteractively(schemaRef schema.SchemaReference, existing map[string]string, uuidStorage *storage.UUIDStorage) (map[string]string, error) {
+func (sc *SheetCommand) collectValuesInteractively(
+	schemaRef schema.SchemaReference,
+	existing map[string]string,
+	uuidStorage *storage.UUIDStorage,
+) (map[string]string, error) {
 	values := make(map[string]string)
 
 	// Copy existing values
@@ -665,7 +681,10 @@ func (sc *SheetCommand) runList(cmd *cobra.Command, args []string) error {
 }
 
 // resolveSheetReference resolves a sheet reference from either name or project/environment
-func (sc *SheetCommand) resolveSheetReference(uuidStorage *storage.UUIDStorage, sheetName, projectFlag, envFlag string) (*schema.ConfigSheet, error) {
+func (sc *SheetCommand) resolveSheetReference(
+	uuidStorage *storage.UUIDStorage,
+	sheetName, projectFlag, envFlag string,
+) (*schema.ConfigSheet, error) {
 	// If environment flag is provided, resolve by project/environment
 	if envFlag != "" {
 		var project *schema.Project
@@ -680,7 +699,9 @@ func (sc *SheetCommand) resolveSheetReference(uuidStorage *storage.UUIDStorage, 
 		} else {
 			// Try to detect project from .ee file
 			if !EasyEnvFileExists("") {
-				return nil, fmt.Errorf("no .ee file found and no --project specified. Either specify --project or run from project directory")
+				return nil, fmt.Errorf(
+					"no .ee file found and no --project specified. " +
+						"Either specify --project or run from project directory")
 			}
 
 			menvFile, err := LoadEasyEnvFile("")
@@ -718,7 +739,12 @@ func (sc *SheetCommand) resolveSheetReference(uuidStorage *storage.UUIDStorage, 
 		configSheetName := project.GetConfigSheetName(envInfo.Name)
 		configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load config sheet '%s' for environment '%s': %w", configSheetName, envFlag, err)
+			return nil, fmt.Errorf(
+				"failed to load config sheet '%s' for environment '%s': %w",
+				configSheetName,
+				envFlag,
+				err,
+			)
 		}
 
 		return configSheet, nil
@@ -763,7 +789,10 @@ func (sc *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
 		"yaml":   true,
 	}
 	if !validFormats[format] {
-		return fmt.Errorf("invalid format '%s'. Supported formats: dotenv, bash, json, yaml", format)
+		return fmt.Errorf(
+			"invalid format '%s'. Supported formats: dotenv, bash, json, yaml",
+			format,
+		)
 	}
 
 	// Resolve config sheet reference
@@ -780,7 +809,7 @@ func (sc *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
 
 	// Output to file or stdout
 	if output != "" {
-		if err := os.WriteFile(output, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(output, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("failed to write to file '%s': %w", output, err)
 		}
 		fmt.Printf("✅ Exported %s to %s (%s format)\n", sheetName, output, format)
@@ -792,7 +821,11 @@ func (sc *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
 }
 
 // generateExport generates the export content in the specified format
-func (sc *SheetCommand) generateExport(configSheet *schema.ConfigSheet, format string, includeComments bool) (string, error) {
+func (sc *SheetCommand) generateExport(
+	configSheet *schema.ConfigSheet,
+	format string,
+	includeComments bool,
+) (string, error) {
 	switch format {
 	case "dotenv":
 		return sc.generateDotEnv(configSheet, includeComments), nil
@@ -808,7 +841,10 @@ func (sc *SheetCommand) generateExport(configSheet *schema.ConfigSheet, format s
 }
 
 // generateDotEnv generates .env format output
-func (sc *SheetCommand) generateDotEnv(configSheet *schema.ConfigSheet, includeComments bool) string {
+func (sc *SheetCommand) generateDotEnv(
+	configSheet *schema.ConfigSheet,
+	includeComments bool,
+) string {
 	var result strings.Builder
 
 	if includeComments {
@@ -817,7 +853,9 @@ func (sc *SheetCommand) generateDotEnv(configSheet *schema.ConfigSheet, includeC
 		if configSheet.Description != "" {
 			result.WriteString(fmt.Sprintf("# Description: %s\n", configSheet.Description))
 		}
-		result.WriteString(fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")))
+		result.WriteString(
+			fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")),
+		)
 	}
 
 	for key, value := range configSheet.Values {
@@ -832,7 +870,10 @@ func (sc *SheetCommand) generateDotEnv(configSheet *schema.ConfigSheet, includeC
 }
 
 // generateBashScript generates bash export script
-func (sc *SheetCommand) generateBashScript(configSheet *schema.ConfigSheet, includeComments bool) string {
+func (sc *SheetCommand) generateBashScript(
+	configSheet *schema.ConfigSheet,
+	includeComments bool,
+) string {
 	var result strings.Builder
 
 	result.WriteString("#!/bin/bash\n")
@@ -842,9 +883,13 @@ func (sc *SheetCommand) generateBashScript(configSheet *schema.ConfigSheet, incl
 		if configSheet.Description != "" {
 			result.WriteString(fmt.Sprintf("# Description: %s\n", configSheet.Description))
 		}
-		result.WriteString(fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")))
+		result.WriteString(
+			fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")),
+		)
 		result.WriteString("# Run with: source <(ee sheet export sheet-name --format bash)\n")
-		result.WriteString("# Or save to file: ee sheet export sheet-name --format bash --output export.sh\n\n")
+		result.WriteString(
+			"# Or save to file: ee sheet export sheet-name --format bash --output export.sh\n\n",
+		)
 	}
 
 	for key, value := range configSheet.Values {
@@ -861,7 +906,10 @@ func (sc *SheetCommand) generateBashScript(configSheet *schema.ConfigSheet, incl
 }
 
 // generateJSON generates JSON format output
-func (sc *SheetCommand) generateJSON(configSheet *schema.ConfigSheet, includeComments bool) (string, error) {
+func (sc *SheetCommand) generateJSON(
+	configSheet *schema.ConfigSheet,
+	includeComments bool,
+) (string, error) {
 	if includeComments {
 		// JSON with metadata
 		export := map[string]interface{}{
@@ -883,7 +931,10 @@ func (sc *SheetCommand) generateJSON(configSheet *schema.ConfigSheet, includeCom
 }
 
 // generateYAML generates YAML format output
-func (sc *SheetCommand) generateYAML(configSheet *schema.ConfigSheet, includeComments bool) (string, error) {
+func (sc *SheetCommand) generateYAML(
+	configSheet *schema.ConfigSheet,
+	includeComments bool,
+) (string, error) {
 	if includeComments {
 		// YAML with metadata
 		export := map[string]interface{}{
@@ -931,7 +982,13 @@ func (sc *SheetCommand) runDelete(cmd *cobra.Command, args []string) error {
 		project, err := uuidStorage.LoadProject(configSheet.Project)
 		if err == nil {
 			project.RemoveEnvironment(configSheet.Environment)
-			uuidStorage.SaveProject(project) // Ignore error for cleanup
+			if err := uuidStorage.SaveProject(project); err != nil {
+				fmt.Fprintf(
+					os.Stderr,
+					"Warning: failed to update project after removing environment: %v\n",
+					err,
+				)
+			}
 		}
 	}
 
@@ -995,7 +1052,9 @@ func (sc *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
 		// If no project specified, try to get from .ee file
 		if projectName == "" {
 			if !EasyEnvFileExists("") {
-				return fmt.Errorf("no project specified and no .ee file found. Use --project flag or run from project directory")
+				return fmt.Errorf(
+					"no project specified and no .ee file found. Use --project flag or run from project directory",
+				)
 			}
 
 			menvFile, err := LoadEasyEnvFile("")
@@ -1016,8 +1075,10 @@ func (sc *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
 		}
 
 		// Find the config sheet for this project/environment
-		return fmt.Errorf("editing by project/environment not yet implemented. Use sheet name directly")
-
+		return fmt.Errorf(
+			"editing by project/environment not yet implemented for project '%s'. Use sheet name directly",
+			projectName,
+		)
 	} else if len(args) > 0 {
 		// Edit by sheet name
 		sheetName = args[0]
@@ -1048,7 +1109,11 @@ func (sc *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpFile)
+	defer func() {
+		if err := os.Remove(tmpFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove temporary file: %v\n", err)
+		}
+	}()
 
 	fmt.Printf("📝 Editing config sheet '%s' using %s...\n", sheetName, editor)
 
@@ -1058,7 +1123,7 @@ func (sc *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read back the edited content
-	editedData, err := ioutil.ReadFile(tmpFile)
+	editedData, err := os.ReadFile(tmpFile)
 	if err != nil {
 		return fmt.Errorf("failed to read edited file: %w", err)
 	}
@@ -1121,11 +1186,15 @@ func (sc *SheetCommand) createTempFile(prefix string, data []byte) (string, erro
 	tmpDir := os.TempDir()
 
 	// Create temp file
-	file, err := ioutil.TempFile(tmpDir, fmt.Sprintf("ee-%s-*.json", prefix))
+	file, err := os.CreateTemp(tmpDir, fmt.Sprintf("ee-%s-*.json", prefix))
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close temporary file: %v\n", err)
+		}
+	}()
 
 	// Write data to temp file
 	if _, err := file.Write(data); err != nil {
@@ -1145,10 +1214,12 @@ func (sc *SheetCommand) openEditor(editor, filename string) error {
 
 	// Prepare command
 	editorCmd := editorParts[0]
-	editorArgs := append(editorParts[1:], filename)
+	cmdArgs := make([]string, len(editorParts)-1+1)
+	copy(cmdArgs, editorParts[1:])
+	cmdArgs[len(editorParts)-1] = filename
 
 	// Execute editor
-	cmd := exec.Command(editorCmd, editorArgs...)
+	cmd := exec.Command(editorCmd, cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

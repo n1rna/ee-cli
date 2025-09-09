@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/schema"
-	"gopkg.in/yaml.v3"
 )
 
 // OldSchema represents the old YAML-based schema structure
@@ -107,7 +108,11 @@ func (m *Migrator) Migrate() (*MigrationReport, error) {
 
 	fmt.Printf("Migration completed in %v\n", m.report.Duration)
 	fmt.Printf("Schemas: %d found, %d migrated\n", m.report.SchemasFound, m.report.SchemasMigrated)
-	fmt.Printf("Config sheets: %d found, %d migrated\n", m.report.SheetsFound, m.report.SheetsMigrated)
+	fmt.Printf(
+		"Config sheets: %d found, %d migrated\n",
+		m.report.SheetsFound,
+		m.report.SheetsMigrated,
+	)
 	fmt.Printf("Projects created: %d\n", m.report.ProjectsCreated)
 	fmt.Printf("Errors: %d\n", len(m.report.Errors))
 	fmt.Printf("Warnings: %d\n", len(m.report.Warnings))
@@ -220,15 +225,7 @@ func (m *Migrator) migrateConfigSheets() error {
 		}
 
 		// Convert config sheet
-		newSheet, err := m.convertConfigSheet(oldSheet, project.ID)
-		if err != nil {
-			m.report.Errors = append(m.report.Errors, MigrationError{
-				File:  path,
-				Type:  "config_sheet",
-				Error: err.Error(),
-			})
-			return nil
-		}
+		newSheet := m.convertConfigSheet(oldSheet, project.ID)
 
 		// Save config sheet (unless dry run)
 		if !m.dryRun {
@@ -315,7 +312,10 @@ func (m *Migrator) convertSchema(oldSchema *OldSchema) *schema.Schema {
 }
 
 // convertConfigSheet converts an old config sheet to the new format
-func (m *Migrator) convertConfigSheet(oldSheet *OldConfigSheet, projectUUID string) (*schema.ConfigSheet, error) {
+func (m *Migrator) convertConfigSheet(
+	oldSheet *OldConfigSheet,
+	projectUUID string,
+) *schema.ConfigSheet {
 	// Try to resolve schema reference
 	var schemaRef schema.SchemaReference
 	if oldSheet.Schema != "" {
@@ -343,11 +343,14 @@ func (m *Migrator) convertConfigSheet(oldSheet *OldConfigSheet, projectUUID stri
 
 	// Create new config sheet
 	return schema.NewConfigSheetForProject(name, description, schemaRef,
-		projectUUID, oldSheet.EnvName, oldSheet.Values), nil
+		projectUUID, oldSheet.EnvName, oldSheet.Values)
 }
 
 // getOrCreateProject gets an existing project or creates a new one
-func (m *Migrator) getOrCreateProject(oldSheet *OldConfigSheet, createdProjects map[string]*schema.Project) (*schema.Project, error) {
+func (m *Migrator) getOrCreateProject(
+	oldSheet *OldConfigSheet,
+	createdProjects map[string]*schema.Project,
+) (*schema.Project, error) {
 	// Check if we've already created this project in this migration
 	if project, exists := createdProjects[oldSheet.ProjectName]; exists {
 		return project, nil
@@ -377,7 +380,7 @@ func (m *Migrator) getOrCreateProject(oldSheet *OldConfigSheet, createdProjects 
 		}
 	}
 
-	description := fmt.Sprintf("Migrated project from old storage")
+	description := "Migrated project from old storage"
 	project := schema.NewProject(oldSheet.ProjectName, description, schemaID)
 
 	// Save project (unless dry run)
@@ -402,7 +405,7 @@ func (m *Migrator) SaveMigrationReport(filePath string) error {
 		return fmt.Errorf("failed to marshal migration report: %w", err)
 	}
 
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write migration report: %w", err)
 	}
 
@@ -437,7 +440,7 @@ func BackupOldStorage(oldBaseDir, backupDir string) error {
 	fmt.Printf("Creating backup of old storage from %s to %s...\n", oldBaseDir, backupDir)
 
 	// Create backup directory
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
@@ -468,9 +471,13 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
+		defer func() {
+			if err := srcFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to close source file: %v\n", err)
+			}
+		}()
 
-		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 			return err
 		}
 
@@ -478,7 +485,11 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer dstFile.Close()
+		defer func() {
+			if err := dstFile.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to close destination file: %v\n", err)
+			}
+		}()
 
 		_, err = dstFile.ReadFrom(srcFile)
 		return err
@@ -502,7 +513,11 @@ func MigrateCommand(oldBaseDir, newBaseDir string, dryRun bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to create new storage: %w", err)
 	}
-	defer newStorage.Close()
+	defer func() {
+		if err := newStorage.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close storage: %v\n", err)
+		}
+	}()
 
 	// Create migrator and run migration
 	migrator := NewMigrator(oldBaseDir, newStorage, dryRun)

@@ -5,15 +5,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 type SchemaCommand struct {
@@ -72,7 +71,8 @@ Examples:
 
 	cmd.Flags().String("import", "", "Import schema definition from a YAML file")
 	cmd.Flags().String("description", "", "Schema description")
-	cmd.Flags().StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
+	cmd.Flags().
+		StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
 	return cmd
 }
 
@@ -137,7 +137,10 @@ func (c *SchemaCommand) runCreate(cmd *cobra.Command, args []string) error {
 	return c.createSchemaInteractively(uuidStorage, schemaName)
 }
 
-func (c *SchemaCommand) createSchemaInteractively(uuidStorage *storage.UUIDStorage, name string) error {
+func (c *SchemaCommand) createSchemaInteractively(
+	uuidStorage *storage.UUIDStorage,
+	name string,
+) error {
 	fmt.Println("Creating new schema...")
 	fmt.Println("For each variable, you'll need to specify:")
 	fmt.Println("- Name (e.g., DATABASE_URL)")
@@ -234,12 +237,20 @@ func (c *SchemaCommand) createSchemaInteractively(uuidStorage *storage.UUIDStora
 		return fmt.Errorf("failed to save schema: %w", err)
 	}
 
-	fmt.Printf("Successfully created schema '%s' with %d variables\n", name, len(schemaObj.Variables))
+	fmt.Printf(
+		"Successfully created schema '%s' with %d variables\n",
+		name,
+		len(schemaObj.Variables),
+	)
 	return nil
 }
 
 // createSchemaFromCLI creates a schema from CLI flags
-func (c *SchemaCommand) createSchemaFromCLI(uuidStorage *storage.UUIDStorage, name, description string, variableSpecs []string) error {
+func (c *SchemaCommand) createSchemaFromCLI(
+	uuidStorage *storage.UUIDStorage,
+	name, description string,
+	variableSpecs []string,
+) error {
 	fmt.Printf("Creating schema '%s' from CLI specifications...\n", name)
 
 	variables := []schema.Variable{}
@@ -283,7 +294,10 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 	// Split into at most 5 parts to handle cases where default values contain colons
 	parts := strings.SplitN(spec, ":", 5)
 	if len(parts) < 4 {
-		return schema.Variable{}, fmt.Errorf("format should be 'name:type:title:required[:default]', got %d parts", len(parts))
+		return schema.Variable{}, fmt.Errorf(
+			"format should be 'name:type:title:required[:default]', got %d parts",
+			len(parts),
+		)
 	}
 
 	name := strings.TrimSpace(parts[0])
@@ -299,7 +313,10 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 	// Validate type
 	validTypes := map[string]bool{"string": true, "number": true, "boolean": true, "url": true}
 	if !validTypes[varType] {
-		return schema.Variable{}, fmt.Errorf("invalid type '%s', must be one of: string, number, boolean, url", varType)
+		return schema.Variable{}, fmt.Errorf(
+			"invalid type '%s', must be one of: string, number, boolean, url",
+			varType,
+		)
 	}
 
 	// Parse required flag
@@ -310,7 +327,10 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 	case "false", "f", "0", "no", "n":
 		required = false
 	default:
-		return schema.Variable{}, fmt.Errorf("invalid required value '%s', must be true/false", requiredStr)
+		return schema.Variable{}, fmt.Errorf(
+			"invalid required value '%s', must be true/false",
+			requiredStr,
+		)
 	}
 
 	// Parse default value (optional)
@@ -328,7 +348,11 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 	}, nil
 }
 
-func (c *SchemaCommand) importSchema(uuidStorage *storage.UUIDStorage, name string, filename string) error {
+func (c *SchemaCommand) importSchema(
+	uuidStorage *storage.UUIDStorage,
+	name string,
+	filename string,
+) error {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to read import file: %w", err)
@@ -340,7 +364,12 @@ func (c *SchemaCommand) importSchema(uuidStorage *storage.UUIDStorage, name stri
 	}
 
 	// Convert to new schema format
-	newSchema := schema.NewSchema(name, schemaObj.Description, schemaObj.Variables, schemaObj.Extends)
+	newSchema := schema.NewSchema(
+		name,
+		schemaObj.Description,
+		schemaObj.Variables,
+		schemaObj.Extends,
+	)
 	// TODO: Implement validation for UUID storage if needed
 
 	// Save schema
@@ -348,7 +377,11 @@ func (c *SchemaCommand) importSchema(uuidStorage *storage.UUIDStorage, name stri
 		return fmt.Errorf("failed to save schema: %w", err)
 	}
 
-	fmt.Printf("Successfully imported schema '%s' with %d variables\n", name, len(newSchema.Variables))
+	fmt.Printf(
+		"Successfully imported schema '%s' with %d variables\n",
+		name,
+		len(newSchema.Variables),
+	)
 	return nil
 }
 
@@ -436,8 +469,13 @@ func (c *SchemaCommand) runDelete(cmd *cobra.Command, args []string) error {
 			// Check if this schema is referenced
 			if configSheet.Schema.Ref != "" {
 				if schemaID := strings.TrimPrefix(configSheet.Schema.Ref, "#/schemas/"); schemaID != configSheet.Schema.Ref {
-					if summary, err := uuidStorage.GetEntitySummary("schemas", schemaID); err == nil && summary.Name == schemaName {
-						return fmt.Errorf("cannot delete schema: in use by project %s (environment: %s)", project.Name, envName)
+					if summary, err := uuidStorage.GetEntitySummary("schemas", schemaID); err == nil &&
+						summary.Name == schemaName {
+						return fmt.Errorf(
+							"cannot delete schema: in use by project %s (environment: %s)",
+							project.Name,
+							envName,
+						)
 					}
 				}
 			}
@@ -483,120 +521,58 @@ func (c *SchemaCommand) runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load schema '%s': %w", schemaName, err)
 	}
 
-	// Get editor command
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vim" // fallback
+	validator := func(data []byte) (interface{}, error) {
+		var editedSchema schema.Schema
+		if err := json.Unmarshal(data, &editedSchema); err != nil {
+			return nil, fmt.Errorf("invalid JSON in edited file: %w", err)
+		}
+
+		// Preserve the original ID and timestamps if they weren't changed
+		if editedSchema.ID == "" {
+			editedSchema.ID = schemaObj.ID
+		}
+		if editedSchema.CreatedAt.IsZero() {
+			editedSchema.CreatedAt = schemaObj.CreatedAt
+		}
+
+		// Validate the edited schema
+		if editedSchema.Name == "" {
+			return nil, fmt.Errorf("schema name cannot be empty")
+		}
+
+		return &editedSchema, nil
 	}
 
-	// Convert to JSON for editing
-	jsonData, err := json.MarshalIndent(schemaObj, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to serialize schema: %w", err)
+	saver := func(entity interface{}) error {
+		editedSchema := entity.(*schema.Schema)
+		return uuidStorage.SaveSchema(editedSchema)
 	}
 
-	// Create temporary file
-	tmpFile, err := c.createTempFile("schema", jsonData)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpFile)
+	changeReporter := func(original, edited interface{}) {
+		origSchema := original.(*schema.Schema)
+		editedSchema := edited.(*schema.Schema)
 
-	fmt.Printf("📝 Editing schema '%s' using %s...\n", schemaName, editor)
-
-	// Open editor
-	if err := c.openEditor(editor, tmpFile); err != nil {
-		return err
-	}
-
-	// Read back the edited content
-	editedData, err := ioutil.ReadFile(tmpFile)
-	if err != nil {
-		return fmt.Errorf("failed to read edited file: %w", err)
-	}
-
-	// Parse the edited JSON
-	var editedSchema schema.Schema
-	if err := json.Unmarshal(editedData, &editedSchema); err != nil {
-		return fmt.Errorf("invalid JSON in edited file: %w", err)
+		if origSchema.Name != editedSchema.Name {
+			fmt.Printf("  Name: %s → %s\n", origSchema.Name, editedSchema.Name)
+		}
+		if origSchema.Description != editedSchema.Description {
+			fmt.Printf("  Description updated\n")
+		}
+		if len(origSchema.Variables) != len(editedSchema.Variables) {
+			fmt.Printf(
+				"  Variables: %d → %d\n",
+				len(origSchema.Variables),
+				len(editedSchema.Variables),
+			)
+		}
 	}
 
-	// Preserve the original ID and timestamps if they weren't changed
-	if editedSchema.ID == "" {
-		editedSchema.ID = schemaObj.ID
-	}
-	if editedSchema.CreatedAt.IsZero() {
-		editedSchema.CreatedAt = schemaObj.CreatedAt
-	}
-
-	// Validate the edited schema
-	if editedSchema.Name == "" {
-		return fmt.Errorf("schema name cannot be empty")
-	}
-
-	// Save the updated schema
-	if err := uuidStorage.SaveSchema(&editedSchema); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
-	}
-
-	fmt.Printf("✅ Schema '%s' updated successfully\n", editedSchema.Name)
-
-	// Show what changed
-	if schemaObj.Name != editedSchema.Name {
-		fmt.Printf("  Name: %s → %s\n", schemaObj.Name, editedSchema.Name)
-	}
-	if schemaObj.Description != editedSchema.Description {
-		fmt.Printf("  Description updated\n")
-	}
-	if len(schemaObj.Variables) != len(editedSchema.Variables) {
-		fmt.Printf("  Variables: %d → %d\n", len(schemaObj.Variables), len(editedSchema.Variables))
-	}
-
-	return nil
-}
-
-// createTempFile creates a temporary file for editing
-func (c *SchemaCommand) createTempFile(prefix string, data []byte) (string, error) {
-	tmpDir := os.TempDir()
-
-	// Create temp file
-	file, err := ioutil.TempFile(tmpDir, fmt.Sprintf("ee-%s-*.json", prefix))
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	defer file.Close()
-
-	// Write data to temp file
-	if _, err := file.Write(data); err != nil {
-		return "", fmt.Errorf("failed to write to temporary file: %w", err)
-	}
-
-	return file.Name(), nil
-}
-
-// openEditor opens the specified editor with the given file
-func (c *SchemaCommand) openEditor(editor, filename string) error {
-	// Split editor command (in case it has arguments)
-	editorParts := strings.Fields(editor)
-	if len(editorParts) == 0 {
-		return fmt.Errorf("editor command is empty")
-	}
-
-	// Prepare command
-	editorCmd := editorParts[0]
-	editorArgs := append(editorParts[1:], filename)
-
-	// Execute editor
-	cmd := exec.Command(editorCmd, editorArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	fmt.Printf("Opening %s...\n", filename)
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor command failed: %w", err)
-	}
-
-	return nil
+	return EditEntity(
+		fmt.Sprintf("schema '%s'", schemaName),
+		schemaObj,
+		&BaseEditorCommands{},
+		validator,
+		saver,
+		changeReporter,
+	)
 }

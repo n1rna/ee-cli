@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -13,7 +14,6 @@ import (
 type SchemasModel struct {
 	summaries []*schema.EntitySummary
 	cursor    int
-	selected  bool
 }
 
 // NewSchemasModel creates a new schemas model
@@ -71,7 +71,9 @@ func (m SchemasModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the schemas list
 func (m SchemasModel) View() string {
 	if len(m.summaries) == 0 {
-		return noItemsStyle.Render("\nNo schemas found.\n\nPress 'n' to create a new schema\nPress 'esc' to go back")
+		return noItemsStyle.Render(
+			"\nNo schemas found.\n\nPress 'n' to create a new schema\nPress 'esc' to go back",
+		)
 	}
 
 	s := "\nSchemas:\n\n"

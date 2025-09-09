@@ -62,7 +62,12 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
 // parseResponse parses HTTP response into target struct
 func (c *Client) parseResponse(resp *http.Response, target interface{}) error {
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log error but don't fail the operation
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -101,6 +106,11 @@ func (c *Client) Health() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var healthResp struct {
 		Status string `json:"status"`
@@ -176,7 +186,11 @@ func getAPIKey(baseURL string) (string, error) {
 
 	// TODO: Add credential store support (keyring, etc.)
 	// For now, return an error asking user to set environment variable
-	return "", fmt.Errorf("API key not found. Set EE_API_KEY environment variable or use host-specific EE_API_KEY_%s", sanitizeEnvVar(extractHost(baseURL)))
+	hostVar := sanitizeEnvVar(extractHost(baseURL))
+	return "", fmt.Errorf(
+		"API key not found. Set EE_API_KEY environment variable or use host-specific EE_API_KEY_%s",
+		hostVar,
+	)
 }
 
 // Helper functions for string manipulation

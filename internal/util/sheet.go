@@ -15,7 +15,11 @@ type SheetReference struct {
 // ParseSheetReference parses a sheet reference from either:
 // 1. A colon-separated string (project:env)
 // 2. Explicit project and env values from flags
-func ParseSheetReference(sheetName string, projectFlag string, envFlag string) (*SheetReference, error) {
+func ParseSheetReference(
+	sheetName string,
+	projectFlag string,
+	envFlag string,
+) (*SheetReference, error) {
 	// Case 1: Using flags
 	if projectFlag != "" || envFlag != "" {
 		if sheetName != "" {

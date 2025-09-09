@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -28,8 +29,6 @@ type CreateSchemaEnhancedModel struct {
 	maxBasicFields int
 
 	// State
-	finished bool
-	err      error
 }
 
 // SchemaFormMode represents the current mode of the form
@@ -174,9 +173,10 @@ func (m CreateSchemaEnhancedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Handle text input updates
 			switch m.mode {
 			case BasicInfoMode:
-				if m.cursor == 0 {
+				switch m.cursor {
+				case 0:
 					m.nameInput, cmd = m.nameInput.Update(msg)
-				} else if m.cursor == 1 {
+				case 1:
 					m.descriptionInput, cmd = m.descriptionInput.Update(msg)
 				}
 				cmds = append(cmds, cmd)
@@ -313,7 +313,9 @@ func (m CreateSchemaEnhancedModel) handleEnterKey() (CreateSchemaEnhancedModel, 
 }
 
 // loadVariableToForm loads a variable into the edit form
-func (m *CreateSchemaEnhancedModel) loadVariableToForm(variable schema.Variable) *VariableFormModel {
+func (m *CreateSchemaEnhancedModel) loadVariableToForm(
+	variable schema.Variable,
+) *VariableFormModel {
 	form := NewVariableFormModel()
 	form.nameInput.SetValue(variable.Name)
 	form.typeInput.SetValue(variable.Type)
@@ -361,9 +363,10 @@ func (m *CreateSchemaEnhancedModel) updateFocus() {
 	// Set appropriate focus
 	switch m.mode {
 	case BasicInfoMode:
-		if m.cursor == 0 {
+		switch m.cursor {
+		case 0:
 			m.nameInput.Focus()
-		} else if m.cursor == 1 {
+		case 1:
 			m.descriptionInput.Focus()
 		}
 
@@ -461,7 +464,11 @@ func (m CreateSchemaEnhancedModel) renderVariablesListMode() string {
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(helpTextStyle.Render("↑/↓: navigate • enter: edit/create • a: add variable • d: delete • esc: cancel"))
+	b.WriteString(
+		helpTextStyle.Render(
+			"↑/↓: navigate • enter: edit/create • a: add variable • d: delete • esc: cancel",
+		),
+	)
 
 	return b.String()
 }
@@ -494,7 +501,9 @@ func (m CreateSchemaEnhancedModel) renderVariableEditMode() string {
 	b.WriteString(variableDetailStyle.Render(requiredText))
 	b.WriteString("\n\n")
 
-	b.WriteString(helpTextStyle.Render("tab: next field • r: toggle required • enter: save • esc: cancel"))
+	b.WriteString(
+		helpTextStyle.Render("tab: next field • r: toggle required • enter: save • esc: cancel"),
+	)
 
 	return b.String()
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -21,9 +22,7 @@ type CreateProjectModel struct {
 	availableSchemas []schema.Schema
 
 	// Navigation
-	focused  int
-	finished bool
-	err      error
+	focused int
 }
 
 const (

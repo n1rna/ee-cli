@@ -91,9 +91,9 @@ func (m MainMenuModel) View() string {
 // Styles for main menu
 var (
 	selectedItemStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
-		Bold(true)
-	
+				Foreground(lipgloss.Color("205")).
+				Bold(true)
+
 	normalItemStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+			Foreground(lipgloss.Color("240"))
 )

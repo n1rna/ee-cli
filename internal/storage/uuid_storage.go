@@ -52,7 +52,7 @@ func (s *UUIDStorage) initDirectories() error {
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
@@ -150,7 +150,7 @@ func (s *UUIDStorage) SaveIndex(entityType string, index *schema.Index) error {
 	indexPath := s.getIndexPath(entityType)
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(indexPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -161,7 +161,7 @@ func (s *UUIDStorage) SaveIndex(entityType string, index *schema.Index) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(indexPath, data, 0644); err != nil {
+	if err := os.WriteFile(indexPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write index file: %w", err)
 	}
 
@@ -195,7 +195,7 @@ func (s *UUIDStorage) saveEntityFile(entityType, uuid string, entity interface{}
 	filePath := s.getEntityFilePath(entityType, uuid)
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -206,7 +206,7 @@ func (s *UUIDStorage) saveEntityFile(entityType, uuid string, entity interface{}
 	}
 
 	// Write to file
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write entity file: %w", err)
 	}
 
@@ -408,7 +408,9 @@ func (s *UUIDStorage) SaveConfigSheet(sheetData *schema.ConfigSheet) error {
 }
 
 // ListConfigSheets returns summaries of config sheets with optional filtering
-func (s *UUIDStorage) ListConfigSheets(filter *schema.ConfigSheetFilter) ([]*schema.ConfigSheetSummary, error) {
+func (s *UUIDStorage) ListConfigSheets(
+	filter *schema.ConfigSheetFilter,
+) ([]*schema.ConfigSheetSummary, error) {
 	index, err := s.LoadIndex("sheets")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load sheets index: %w", err)
@@ -487,7 +489,9 @@ func (s *UUIDStorage) EntityExists(entityType, nameOrUUID string) bool {
 }
 
 // GetEntitySummary gets the summary for an entity
-func (s *UUIDStorage) GetEntitySummary(entityType, nameOrUUID string) (*schema.EntitySummary, error) {
+func (s *UUIDStorage) GetEntitySummary(
+	entityType, nameOrUUID string,
+) (*schema.EntitySummary, error) {
 	index, err := s.LoadIndex(entityType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load index: %w", err)

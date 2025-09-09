@@ -4,10 +4,11 @@ package command
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/n1rna/ee-cli/internal/api"
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // PullCommand handles the ee pull command
@@ -60,7 +61,9 @@ func (pc *PullCommand) Run(cmd *cobra.Command, args []string) error {
 
 	// Check if we're in a project directory with .ee file
 	if !EasyEnvFileExists("") {
-		return fmt.Errorf(".ee file not found in current directory. Run 'ee init' first or cd to a project directory")
+		return fmt.Errorf(
+			".ee file not found in current directory. Run 'ee init' first or cd to a project directory",
+		)
 	}
 
 	// Load .ee file to get remote URL and project ID
@@ -70,7 +73,9 @@ func (pc *PullCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	if menvFile.Remote == "" {
-		return fmt.Errorf("no remote URL configured in .ee file. Use 'ee remote <url>' to configure")
+		return fmt.Errorf(
+			"no remote URL configured in .ee file. Use 'ee remote <url>' to configure",
+		)
 	}
 
 	if menvFile.Project == "" {
@@ -99,7 +104,11 @@ func (pc *PullCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // pullFromRemote pulls changes from the remote API
-func (pc *PullCommand) pullFromRemote(storage *storage.UUIDStorage, project *schema.Project, projectID, remoteURL string) error {
+func (pc *PullCommand) pullFromRemote(
+	storage *storage.UUIDStorage,
+	project *schema.Project,
+	projectID, remoteURL string,
+) error {
 	fmt.Println("📥 Pulling changes from remote...")
 
 	// Create API client
@@ -137,7 +146,7 @@ func (pc *PullCommand) pullFromRemote(storage *storage.UUIDStorage, project *sch
 	}
 
 	// 3. Pull config sheets for all environments
-	if err := pc.pullConfigSheets(client, storage, project, projectGUID, changes); err != nil {
+	if err := pc.pullConfigSheets(client, storage, projectGUID, changes); err != nil {
 		return fmt.Errorf("failed to pull config sheets: %w", err)
 	}
 
@@ -147,7 +156,7 @@ func (pc *PullCommand) pullFromRemote(storage *storage.UUIDStorage, project *sch
 	}
 
 	// Apply changes
-	return pc.applyChanges(storage, changes)
+	return pc.applyChanges(changes)
 }
 
 // pullChanges tracks what changes would be made during pull
@@ -161,7 +170,13 @@ type pullChanges struct {
 // No longer needed - we use GUIDs directly
 
 // pullProject pulls and updates project metadata, returns the project (created or updated)
-func (pc *PullCommand) pullProject(client *api.Client, storage *storage.UUIDStorage, project *schema.Project, projectGUID string, changes *pullChanges) (*schema.Project, error) {
+func (pc *PullCommand) pullProject(
+	client *api.Client,
+	storage *storage.UUIDStorage,
+	project *schema.Project,
+	projectGUID string,
+	changes *pullChanges,
+) (*schema.Project, error) {
 	remoteProject, err := client.GetProject(projectGUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project from API: %w", err)
@@ -192,7 +207,7 @@ func (pc *PullCommand) pullProject(client *api.Client, storage *storage.UUIDStor
 				return nil, fmt.Errorf("failed to save new project: %w", err)
 			}
 
-			fmt.Printf("✅ Created project '%s' locally\n", project.Entity.Name)
+			fmt.Printf("✅ Created project '%s' locally\n", project.Name)
 		} else {
 			// In dry-run mode, just return a mock project for further processing
 			project = api.ConvertProjectFromAPI(remoteProject)
@@ -210,7 +225,7 @@ func (pc *PullCommand) pullProject(client *api.Client, storage *storage.UUIDStor
 		}
 	} else {
 		// Project exists locally, check if we should update
-		if api.ShouldPull(project.Entity.UpdatedAt, remoteProject.UpdatedAt.Time(), pc.force) {
+		if api.ShouldPull(project.UpdatedAt, remoteProject.UpdatedAt.Time(), pc.force) {
 			changes.projectUpdated = true
 
 			if !pc.dryRun {
@@ -234,10 +249,10 @@ func (pc *PullCommand) pullProject(client *api.Client, storage *storage.UUIDStor
 				}
 
 				project = updatedProject // Update our reference
-				fmt.Printf("✅ Updated project '%s'\n", project.Entity.Name)
+				fmt.Printf("✅ Updated project '%s'\n", project.Name)
 			}
 		} else {
-			fmt.Printf("✨ Project '%s' is already up to date\n", project.Entity.Name)
+			fmt.Printf("✨ Project '%s' is already up to date\n", project.Name)
 		}
 	}
 
@@ -245,7 +260,12 @@ func (pc *PullCommand) pullProject(client *api.Client, storage *storage.UUIDStor
 }
 
 // pullProjectSchema pulls the project's default schema
-func (pc *PullCommand) pullProjectSchema(client *api.Client, storage *storage.UUIDStorage, project *schema.Project, changes *pullChanges) error {
+func (pc *PullCommand) pullProjectSchema(
+	client *api.Client,
+	storage *storage.UUIDStorage,
+	project *schema.Project,
+	changes *pullChanges,
+) error {
 	// Get all schemas and find the one matching our project schema
 	schemas, err := client.ListSchemas()
 	if err != nil {
@@ -286,7 +306,12 @@ func (pc *PullCommand) pullProjectSchema(client *api.Client, storage *storage.UU
 }
 
 // pullConfigSheets pulls all config sheets for the project's environments
-func (pc *PullCommand) pullConfigSheets(client *api.Client, storage *storage.UUIDStorage, project *schema.Project, projectGUID string, changes *pullChanges) error {
+func (pc *PullCommand) pullConfigSheets(
+	client *api.Client,
+	storage *storage.UUIDStorage,
+	projectGUID string,
+	changes *pullChanges,
+) error {
 	// Get config sheets for this project from API
 	configSheets, err := client.ListConfigSheetsByProject(projectGUID, true)
 	if err != nil {
@@ -321,16 +346,28 @@ func (pc *PullCommand) pullConfigSheets(client *api.Client, storage *storage.UUI
 
 				// Handle schema reference if config sheet has a schema GUID
 				if remoteConfigSheet.SchemaGUID != "" {
-					schemaName, err := pc.ensureSchemaExists(client, storage, remoteConfigSheet.SchemaGUID)
+					schemaName, err := pc.ensureSchemaExists(
+						client,
+						storage,
+						remoteConfigSheet.SchemaGUID,
+					)
 					if err != nil {
-						return fmt.Errorf("failed to ensure schema exists for config sheet '%s': %w", remoteConfigSheet.Name, err)
+						return fmt.Errorf(
+							"failed to ensure schema exists for config sheet '%s': %w",
+							remoteConfigSheet.Name,
+							err,
+						)
 					}
 					// Set the schema reference to use the schema name
 					updatedConfigSheet.Schema.Ref = schemaName
 				}
 
 				if err := storage.SaveConfigSheet(updatedConfigSheet); err != nil {
-					return fmt.Errorf("failed to save config sheet '%s': %w", remoteConfigSheet.Name, err)
+					return fmt.Errorf(
+						"failed to save config sheet '%s': %w",
+						remoteConfigSheet.Name,
+						err,
+					)
 				}
 
 				if isNew {
@@ -379,7 +416,7 @@ func (pc *PullCommand) displayDryRunResults(changes *pullChanges) error {
 }
 
 // applyChanges applies all the accumulated changes
-func (pc *PullCommand) applyChanges(storage *storage.UUIDStorage, changes *pullChanges) error {
+func (pc *PullCommand) applyChanges(changes *pullChanges) error {
 	totalChanges := 0
 	if changes.projectUpdated {
 		totalChanges++
@@ -399,7 +436,11 @@ func (pc *PullCommand) applyChanges(storage *storage.UUIDStorage, changes *pullC
 }
 
 // ensureSchemaExists checks if a schema exists locally and pulls it if not, returns schema name
-func (pc *PullCommand) ensureSchemaExists(client *api.Client, storage *storage.UUIDStorage, schemaGUID string) (string, error) {
+func (pc *PullCommand) ensureSchemaExists(
+	client *api.Client,
+	storage *storage.UUIDStorage,
+	schemaGUID string,
+) (string, error) {
 	// First, get the schema from the API to find its name
 	remoteSchema, err := client.GetSchema(schemaGUID)
 	if err != nil {
@@ -418,18 +459,16 @@ func (pc *PullCommand) ensureSchemaExists(client *api.Client, storage *storage.U
 		}
 
 		fmt.Printf("✅ Created schema '%s'\n", remoteSchema.Name)
-	} else {
+	} else if api.ShouldPull(localSchema.UpdatedAt, remoteSchema.UpdatedAt.Time(), pc.force) {
 		// Check if we should update it
-		if api.ShouldPull(localSchema.UpdatedAt, remoteSchema.UpdatedAt.Time(), pc.force) {
-			fmt.Printf("📋 Updating schema '%s'\n", remoteSchema.Name)
+		fmt.Printf("📋 Updating schema '%s'\n", remoteSchema.Name)
 
-			convertedSchema := api.ConvertSchemaFromAPI(remoteSchema)
-			if err := storage.SaveSchema(convertedSchema); err != nil {
-				return "", fmt.Errorf("failed to save schema '%s': %w", remoteSchema.Name, err)
-			}
-
-			fmt.Printf("✅ Updated schema '%s'\n", remoteSchema.Name)
+		convertedSchema := api.ConvertSchemaFromAPI(remoteSchema)
+		if err := storage.SaveSchema(convertedSchema); err != nil {
+			return "", fmt.Errorf("failed to save schema '%s': %w", remoteSchema.Name, err)
 		}
+
+		fmt.Printf("✅ Updated schema '%s'\n", remoteSchema.Name)
 	}
 
 	return remoteSchema.Name, nil

@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // InitCommand handles the ee init command
@@ -109,7 +110,10 @@ func (ic *InitCommand) Run(cmd *cobra.Command, args []string) error {
 				existingSchemaName = summary.Name
 			}
 			if existingSchemaName != ic.schemaName {
-				fmt.Printf("Warning: Existing project uses schema '%s', ignoring --schema flag\n", existingSchemaName)
+				fmt.Printf(
+					"Warning: Existing project uses schema '%s', ignoring --schema flag\n",
+					existingSchemaName,
+				)
 			}
 		}
 	} else {
@@ -160,7 +164,10 @@ func (ic *InitCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // createNewProject creates a new project with the specified name
-func (ic *InitCommand) createNewProject(uuidStorage *storage.UUIDStorage, projectName string) (*schema.Project, error) {
+func (ic *InitCommand) createNewProject(
+	uuidStorage *storage.UUIDStorage,
+	projectName string,
+) (*schema.Project, error) {
 	// Determine schema to use
 	var schemaID string
 	schemaName := ic.schemaName
@@ -239,7 +246,8 @@ func (ic *InitCommand) createDefaultSchema(name string) *schema.Schema {
 func sanitizeProjectName(name string) string {
 	// Replace invalid characters with hyphens
 	result := strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' ||
+			r == '_' {
 			return r
 		}
 		return '-'

@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
 )
@@ -511,11 +512,13 @@ func (m Model) createProject(project *schema.Project) tea.Cmd {
 }
 
 // Custom messages
-type SchemasLoadedMsg []*schema.EntitySummary
-type ProjectsLoadedMsg []*schema.EntitySummary
-type ConfigSheetsLoadedMsg []*schema.ConfigSheetSummary
-type ErrorMsg string
-type NavigateMsg ViewState
+type (
+	SchemasLoadedMsg      []*schema.EntitySummary
+	ProjectsLoadedMsg     []*schema.EntitySummary
+	ConfigSheetsLoadedMsg []*schema.ConfigSheetSummary
+	ErrorMsg              string
+	NavigateMsg           ViewState
+)
 
 // SchemaCreatedMsg represents a successful schema creation
 type SchemaCreatedMsg struct {

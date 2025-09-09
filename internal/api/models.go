@@ -15,7 +15,7 @@ func (t *APITime) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	
+
 	// Try different timestamp formats that the API might return
 	formats := []string{
 		"2006-01-02T15:04:05.000000",
@@ -23,14 +23,14 @@ func (t *APITime) UnmarshalJSON(data []byte) error {
 		time.RFC3339,
 		time.RFC3339Nano,
 	}
-	
+
 	for _, format := range formats {
 		if parsed, err := time.Parse(format, s); err == nil {
 			*t = APITime(parsed)
 			return nil
 		}
 	}
-	
+
 	return nil // Return nil to avoid breaking on unknown formats
 }
 
@@ -50,26 +50,25 @@ type Variable struct {
 
 // Schema represents a schema for API communication
 type Schema struct {
-	GUID        string    `json:"guid"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	IsPublic    bool      `json:"is_public,omitempty"`
+	GUID        string     `json:"guid"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	IsPublic    bool       `json:"is_public,omitempty"`
 	Variables   []Variable `json:"variables,omitempty"`
-	Extends     []string  `json:"extends,omitempty"`
-	CreatedAt   APITime   `json:"created_at,omitempty"`
-	UpdatedAt   APITime   `json:"updated_at,omitempty"`
+	Extends     []string   `json:"extends,omitempty"`
+	CreatedAt   APITime    `json:"created_at,omitempty"`
+	UpdatedAt   APITime    `json:"updated_at,omitempty"`
 }
 
 // Project represents a project for API communication
 type Project struct {
-	GUID               string    `json:"guid"`
-	Name               string    `json:"name"`
-	Description        string    `json:"description,omitempty"`
-	DefaultSchemaGUID  *string   `json:"default_schema_guid,omitempty"`
-	CreatedAt          APITime   `json:"created_at,omitempty"`
-	UpdatedAt          APITime   `json:"updated_at,omitempty"`
+	GUID              string  `json:"guid"`
+	Name              string  `json:"name"`
+	Description       string  `json:"description,omitempty"`
+	DefaultSchemaGUID *string `json:"default_schema_guid,omitempty"`
+	CreatedAt         APITime `json:"created_at,omitempty"`
+	UpdatedAt         APITime `json:"updated_at,omitempty"`
 }
-
 
 // ConfigSheet represents a config sheet for API communication
 type ConfigSheet struct {

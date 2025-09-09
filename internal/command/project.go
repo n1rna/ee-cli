@@ -5,14 +5,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"os/exec"
 	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // ProjectCommand handles the ee project command
@@ -204,76 +203,60 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
 	}
 
-	// Get editor command
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vim" // fallback
+	validator := func(data []byte) (interface{}, error) {
+		var editedProject schema.Project
+		if err := json.Unmarshal(data, &editedProject); err != nil {
+			return nil, fmt.Errorf("invalid JSON in edited file: %w", err)
+		}
+
+		// Preserve the original ID and timestamps if they weren't changed
+		if editedProject.ID == "" {
+			editedProject.ID = project.ID
+		}
+		if editedProject.CreatedAt.IsZero() {
+			editedProject.CreatedAt = project.CreatedAt
+		}
+
+		// Validate the edited project
+		if editedProject.Name == "" {
+			return nil, fmt.Errorf("project name cannot be empty")
+		}
+
+		return &editedProject, nil
 	}
 
-	// Convert to JSON for editing
-	jsonData, err := json.MarshalIndent(project, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to serialize project: %w", err)
+	saver := func(entity interface{}) error {
+		editedProject := entity.(*schema.Project)
+		return uuidStorage.SaveProject(editedProject)
 	}
 
-	// Create temporary file
-	tmpFile, err := c.createTempFile("project", jsonData)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpFile)
+	changeReporter := func(original, edited interface{}) {
+		origProject := original.(*schema.Project)
+		editedProject := edited.(*schema.Project)
 
-	fmt.Printf("📝 Editing project '%s' using %s...\n", projectName, editor)
-
-	// Open editor
-	if err := c.openEditor(editor, tmpFile); err != nil {
-		return err
-	}
-
-	// Read back the edited content
-	editedData, err := ioutil.ReadFile(tmpFile)
-	if err != nil {
-		return fmt.Errorf("failed to read edited file: %w", err)
-	}
-
-	// Parse the edited JSON
-	var editedProject schema.Project
-	if err := json.Unmarshal(editedData, &editedProject); err != nil {
-		return fmt.Errorf("invalid JSON in edited file: %w", err)
+		if origProject.Name != editedProject.Name {
+			fmt.Printf("  Name: %s → %s\n", origProject.Name, editedProject.Name)
+		}
+		if origProject.Description != editedProject.Description {
+			fmt.Printf("  Description updated\n")
+		}
+		if len(origProject.Environments) != len(editedProject.Environments) {
+			fmt.Printf(
+				"  Environments: %d → %d\n",
+				len(origProject.Environments),
+				len(editedProject.Environments),
+			)
+		}
 	}
 
-	// Preserve the original ID and timestamps if they weren't changed
-	if editedProject.ID == "" {
-		editedProject.ID = project.ID
-	}
-	if editedProject.CreatedAt.IsZero() {
-		editedProject.CreatedAt = project.CreatedAt
-	}
-
-	// Validate the edited project
-	if editedProject.Name == "" {
-		return fmt.Errorf("project name cannot be empty")
-	}
-
-	// Save the updated project
-	if err := uuidStorage.SaveProject(&editedProject); err != nil {
-		return fmt.Errorf("failed to save project: %w", err)
-	}
-
-	fmt.Printf("✅ Project '%s' updated successfully\n", editedProject.Name)
-
-	// Show what changed
-	if project.Name != editedProject.Name {
-		fmt.Printf("  Name: %s → %s\n", project.Name, editedProject.Name)
-	}
-	if project.Description != editedProject.Description {
-		fmt.Printf("  Description updated\n")
-	}
-	if len(project.Environments) != len(editedProject.Environments) {
-		fmt.Printf("  Environments: %d → %d\n", len(project.Environments), len(editedProject.Environments))
-	}
-
-	return nil
+	return EditEntity(
+		fmt.Sprintf("project '%s'", projectName),
+		project,
+		&BaseEditorCommands{},
+		validator,
+		saver,
+		changeReporter,
+	)
 }
 
 func (c *ProjectCommand) newDeleteCommand() *cobra.Command {
@@ -301,7 +284,10 @@ func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
 	projectName := args[0]
 
 	// Confirm deletion
-	fmt.Printf("Are you sure you want to delete project '%s'? This will also delete all its environments and config sheets. (y/N): ", projectName)
+	fmt.Printf(
+		"Are you sure you want to delete project '%s'? This will also delete all its environments and config sheets. (y/N): ",
+		projectName,
+	)
 
 	response, err := c.reader.ReadString('\n')
 	if err != nil {
@@ -310,59 +296,13 @@ func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
 
 	response = strings.TrimSpace(strings.ToLower(response))
 	if response != "y" && response != "yes" {
-		fmt.Println("Deletion cancelled")
+		fmt.Println("Deletion canceled")
 		return nil
 	}
 
 	// TODO: Implement project deletion in storage
 	// For now, just return an error indicating it's not implemented
 	return fmt.Errorf("project deletion not yet implemented")
-}
-
-// createTempFile creates a temporary file for editing
-func (c *ProjectCommand) createTempFile(prefix string, data []byte) (string, error) {
-	tmpDir := os.TempDir()
-
-	// Create temp file
-	file, err := ioutil.TempFile(tmpDir, fmt.Sprintf("ee-%s-*.json", prefix))
-	if err != nil {
-		return "", fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	defer file.Close()
-
-	// Write data to temp file
-	if _, err := file.Write(data); err != nil {
-		return "", fmt.Errorf("failed to write to temporary file: %w", err)
-	}
-
-	return file.Name(), nil
-}
-
-// openEditor opens the specified editor with the given file
-func (c *ProjectCommand) openEditor(editor, filename string) error {
-	// Split editor command (in case it has arguments)
-	editorParts := strings.Fields(editor)
-	if len(editorParts) == 0 {
-		return fmt.Errorf("editor command is empty")
-	}
-
-	// Prepare command
-	editorCmd := editorParts[0]
-	editorArgs := append(editorParts[1:], filename)
-
-	// Execute editor
-	cmd := exec.Command(editorCmd, editorArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	fmt.Printf("Opening %s...\n", filename)
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor command failed: %w", err)
-	}
-
-	return nil
 }
 
 func (c *ProjectCommand) newEnvCommand() *cobra.Command {
@@ -445,7 +385,14 @@ func (c *ProjectCommand) runEnvAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	configSheet := schema.NewConfigSheetForProject(configSheetName, description, schemaRef, project.ID, envName, make(map[string]string))
+	configSheet := schema.NewConfigSheetForProject(
+		configSheetName,
+		description,
+		schemaRef,
+		project.ID,
+		envName,
+		make(map[string]string),
+	)
 
 	// Save config sheet
 	if err := uuidStorage.SaveConfigSheet(configSheet); err != nil {
@@ -503,7 +450,13 @@ func (c *ProjectCommand) runEnvRemove(cmd *cobra.Command, args []string) error {
 	configSheetName := project.GetConfigSheetName(envName)
 
 	// Confirm deletion
-	fmt.Printf("Are you sure you want to remove environment '%s' from project '%s'? This will also delete the config sheet '%s'. (y/N): ", envName, projectName, configSheetName)
+	fmt.Printf(
+		"Are you sure you want to remove environment '%s' from project '%s'? "+
+			"This will also delete the config sheet '%s'. (y/N): ",
+		envName,
+		projectName,
+		configSheetName,
+	)
 
 	response, err := c.reader.ReadString('\n')
 	if err != nil {
@@ -512,7 +465,7 @@ func (c *ProjectCommand) runEnvRemove(cmd *cobra.Command, args []string) error {
 
 	response = strings.TrimSpace(strings.ToLower(response))
 	if response != "y" && response != "yes" {
-		fmt.Println("Removal cancelled")
+		fmt.Println("Removal canceled")
 		return nil
 	}
 
@@ -603,9 +556,12 @@ func (c *ProjectCommand) runEnvList(cmd *cobra.Command, args []string) error {
 }
 
 // fixProjectConfigSheetSchemas fixes config sheets to use the project's schema
-func (c *ProjectCommand) fixProjectConfigSheetSchemas(uuidStorage *storage.UUIDStorage, project *schema.Project) error {
+func (c *ProjectCommand) fixProjectConfigSheetSchemas(
+	uuidStorage *storage.UUIDStorage,
+	project *schema.Project,
+) error {
 	if project.Schema == "" {
-		return fmt.Errorf("project '%s' has no schema defined", project.Entity.Name)
+		return fmt.Errorf("project '%s' has no schema defined", project.Name)
 	}
 
 	projectSchemaRef := schema.SchemaReference{

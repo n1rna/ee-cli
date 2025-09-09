@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -103,7 +104,9 @@ func (m ConfigSheetDetailModel) View() string {
 	var b strings.Builder
 
 	// Header
-	b.WriteString(configSheetDetailTitleStyle.Render(fmt.Sprintf("Config Sheet: %s", m.configSheet.Name)))
+	b.WriteString(
+		configSheetDetailTitleStyle.Render(fmt.Sprintf("Config Sheet: %s", m.configSheet.Name)),
+	)
 	b.WriteString("\n\n")
 
 	// Basic information
@@ -122,7 +125,9 @@ func (m ConfigSheetDetailModel) View() string {
 		b.WriteString(fmt.Sprintf("Extends: %s\n", strings.Join(m.configSheet.Extends, ", ")))
 	}
 
-	b.WriteString(fmt.Sprintf("Created: %s\n", m.configSheet.CreatedAt.Format("2006-01-02 15:04:05")))
+	b.WriteString(
+		fmt.Sprintf("Created: %s\n", m.configSheet.CreatedAt.Format("2006-01-02 15:04:05")),
+	)
 	b.WriteString("\n")
 
 	// Variables section

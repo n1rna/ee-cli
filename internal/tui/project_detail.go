@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -194,10 +195,6 @@ var (
 
 	normalEnvironmentStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255"))
-
-	environmentDetailStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("243")).
-				Italic(true)
 
 	noEnvironmentsStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("243")).

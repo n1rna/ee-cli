@@ -17,7 +17,7 @@ func TestNewUUIDStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create config
 	cfg := &config.Config{
@@ -29,7 +29,7 @@ func TestNewUUIDStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create UUID storage: %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Verify directories were created
 	expectedDirs := []string{
@@ -51,14 +51,14 @@ func TestIndexOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Test loading non-existent index (should create empty)
 	index, err := storage.LoadIndex("schemas")
@@ -118,14 +118,14 @@ func TestSchemaOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create a schema
 	variables := []schema.Variable{
@@ -198,14 +198,14 @@ func TestProjectOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create a project
 	schemaID := "550e8400-e29b-41d4-a716-446655440000"
@@ -257,14 +257,14 @@ func TestConfigSheetOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create config sheets
 	schemaRef := schema.SchemaReference{
@@ -280,7 +280,14 @@ func TestConfigSheetOperations(t *testing.T) {
 	standaloneSheet := schema.NewConfigSheet("standalone", "Standalone config", schemaRef, values)
 
 	// Project environment config sheet
-	projectSheet := schema.NewConfigSheetForProject("api-dev", "API Dev config", schemaRef, "project-uuid", "development", values)
+	projectSheet := schema.NewConfigSheetForProject(
+		"api-dev",
+		"API Dev config",
+		schemaRef,
+		"project-uuid",
+		"development",
+		values,
+	)
 
 	// Save both sheets
 	if err := storage.SaveConfigSheet(standaloneSheet); err != nil {
@@ -346,14 +353,14 @@ func TestDeleteOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create and save a schema
 	testSchema := schema.NewSchema("test-schema", "Test schema", []schema.Variable{}, nil)
@@ -399,14 +406,14 @@ func TestStorageValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create and save some entities
 	testSchema := schema.NewSchema("test-schema", "Test schema", []schema.Variable{}, nil)
@@ -427,7 +434,7 @@ func TestStorageValidation(t *testing.T) {
 	// Create an orphaned file (file without index entry)
 	orphanUUID := "orphaned-uuid"
 	orphanPath := storage.getEntityFilePath("schemas", orphanUUID)
-	if err := os.WriteFile(orphanPath, []byte("{}"), 0644); err != nil {
+	if err := os.WriteFile(orphanPath, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -443,14 +450,14 @@ func TestStorageStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Initially should have 0 of everything
 	stats, err := storage.GetStorageStats()
@@ -481,7 +488,12 @@ func TestStorageStats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testSheet := schema.NewConfigSheet("test-sheet", "Test sheet", schema.SchemaReference{Ref: testSchema.ID}, nil)
+	testSheet := schema.NewConfigSheet(
+		"test-sheet",
+		"Test sheet",
+		schema.SchemaReference{Ref: testSchema.ID},
+		nil,
+	)
 	if err := storage.SaveConfigSheet(testSheet); err != nil {
 		t.Fatal(err)
 	}
@@ -511,17 +523,22 @@ func TestEntitySummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create and save a schema
-	testSchema := schema.NewSchema("test-schema", "Test schema description", []schema.Variable{}, nil)
+	testSchema := schema.NewSchema(
+		"test-schema",
+		"Test schema description",
+		[]schema.Variable{},
+		nil,
+	)
 	if err := storage.SaveSchema(testSchema); err != nil {
 		t.Fatal(err)
 	}
@@ -565,14 +582,14 @@ func TestJSONSerialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &config.Config{BaseDir: tmpDir}
 	storage, err := NewUUIDStorage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	// Create a complex schema with all features
 	variables := []schema.Variable{
@@ -589,7 +606,12 @@ func TestJSONSerialization(t *testing.T) {
 		},
 	}
 
-	testSchema := schema.NewSchema("complex-schema", "Complex test schema", variables, []string{"base-schema"})
+	testSchema := schema.NewSchema(
+		"complex-schema",
+		"Complex test schema",
+		variables,
+		[]string{"base-schema"},
+	)
 
 	// Save and reload
 	if err := storage.SaveSchema(testSchema); err != nil {
@@ -627,7 +649,16 @@ func TestJSONSerialization(t *testing.T) {
 	}
 
 	// Check that all expected fields are present
-	expectedFields := []string{"id", "name", "description", "local", "created_at", "updated_at", "variables", "extends"}
+	expectedFields := []string{
+		"id",
+		"name",
+		"description",
+		"local",
+		"created_at",
+		"updated_at",
+		"variables",
+		"extends",
+	}
 	for _, field := range expectedFields {
 		if _, exists := jsonData[field]; !exists {
 			t.Errorf("Expected field %s not found in JSON", field)

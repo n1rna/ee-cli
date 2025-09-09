@@ -1,7 +1,10 @@
 // Package api provides schema-related API methods
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // ListSchemas retrieves all schemas from the API
 func (c *Client) ListSchemas() ([]Schema, error) {
@@ -9,12 +12,17 @@ func (c *Client) ListSchemas() ([]Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
 	var schemas []Schema
 	if err := c.parseResponse(resp, &schemas); err != nil {
 		return nil, err
 	}
-	
+
 	return schemas, nil
 }
 
@@ -25,12 +33,17 @@ func (c *Client) GetSchema(guid string) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
 	var schema Schema
 	if err := c.parseResponse(resp, &schema); err != nil {
 		return nil, err
 	}
-	
+
 	return &schema, nil
 }
 
@@ -40,12 +53,17 @@ func (c *Client) CreateSchema(schema *Schema) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
 	var createdSchema Schema
 	if err := c.parseResponse(resp, &createdSchema); err != nil {
 		return nil, err
 	}
-	
+
 	return &createdSchema, nil
 }
 
@@ -56,12 +74,17 @@ func (c *Client) UpdateSchema(guid string, schema *Schema) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
 	var updatedSchema Schema
 	if err := c.parseResponse(resp, &updatedSchema); err != nil {
 		return nil, err
 	}
-	
+
 	return &updatedSchema, nil
 }
 
@@ -72,6 +95,11 @@ func (c *Client) DeleteSchema(guid string) error {
 	if err != nil {
 		return err
 	}
-	
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
+
 	return c.parseResponse(resp, nil)
 }

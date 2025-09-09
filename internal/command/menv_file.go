@@ -73,7 +73,7 @@ func SaveEasyEnvFile(menvFile *EasyEnvFile, dir string) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(menvPath, data, 0644); err != nil {
+	if err := os.WriteFile(menvPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write .ee file: %w", err)
 	}
 
@@ -178,7 +178,8 @@ func ValidateEasyEnvFile(menvFile *EasyEnvFile) error {
 	// Remote URL should be a valid HTTP/HTTPS URL if specified
 	if menvFile.Remote != "" {
 		// Basic URL format validation (can be enhanced later)
-		if !(len(menvFile.Remote) > 7 && (menvFile.Remote[:7] == "http://" || menvFile.Remote[:8] == "https://")) {
+		if len(menvFile.Remote) <= 7 ||
+			(menvFile.Remote[:7] != "http://" && menvFile.Remote[:8] != "https://") {
 			return fmt.Errorf("invalid remote URL format: %s", menvFile.Remote)
 		}
 	}

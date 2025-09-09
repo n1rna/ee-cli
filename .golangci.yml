@@ -1,81 +1,80 @@
+version: "2"
 run:
-  timeout: 5m
   issues-exit-code: 1
   tests: true
-
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-
-  goimports:
-    local-prefixes: github.com/n1rna/ee-cli
-
-  misspell:
-    locale: US
-
-  unused:
-    check-exported: false
-
-  unparam:
-    check-exported: false
-
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
 linters:
   enable:
     - asciicheck
     - bodyclose
     - dogsled
-    - dupl
-    - errcheck
     - gochecknoinits
-    - gocritic
-    - gofmt
     - goprintffuncname
-    - gosimple
-    - ineffassign
     - lll
     - misspell
     - nakedret
     - nolintlint
     - rowserrcheck
     - staticcheck
-    - stylecheck
-    - typecheck
     - unconvert
     - unparam
-    - unused
     - whitespace
-
   disable:
+    - dupl
     - gochecknoglobals
+    - gocritic
     - godot
     - godox
     - nestif
     - prealloc
     - testpackage
     - wsl
-
+  settings:
+    gocyclo:
+      min-complexity: 15
+    misspell:
+      locale: US
+    unparam:
+      check-exported: false
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - dupl
+          - funlen
+          - mnd
+        path: _test\.go
+      - linters:
+          - staticcheck
+        text: 'SA9003:'
+      - linters:
+          - lll
+        source: '^//go:generate '
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - mnd
-        - funlen
-        - dupl
-
-    - linters:
-        - staticcheck
-      text: "SA9003:"
-
-    - linters:
-        - lll
-      source: "^//go:generate "
-
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - golines
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/n1rna/ee-cli
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

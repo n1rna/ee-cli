@@ -3,11 +3,16 @@ package api
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 )
 
 // ListConfigSheets retrieves all config sheets with optional filtering
-func (c *Client) ListConfigSheets(projectGUID *string, schemaGUID *string, activeOnly bool) ([]ConfigSheet, error) {
+func (c *Client) ListConfigSheets(
+	projectGUID *string,
+	schemaGUID *string,
+	activeOnly bool,
+) ([]ConfigSheet, error) {
 	params := url.Values{}
 	if projectGUID != nil {
 		params.Add("project_guid", *projectGUID)
@@ -16,7 +21,7 @@ func (c *Client) ListConfigSheets(projectGUID *string, schemaGUID *string, activ
 		params.Add("schema_guid", *schemaGUID)
 	}
 	params.Add("active_only", strconv.FormatBool(activeOnly))
-	
+
 	path := "/config-sheets"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
@@ -26,7 +31,11 @@ func (c *Client) ListConfigSheets(projectGUID *string, schemaGUID *string, activ
 	if err != nil {
 		return nil, fmt.Errorf("failed to list config sheets: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var configSheets []ConfigSheet
 	if err := c.parseResponse(resp, &configSheets); err != nil {
@@ -44,7 +53,11 @@ func (c *Client) GetConfigSheet(guid string) (*ConfigSheet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get config sheet: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var configSheet ConfigSheet
 	if err := c.parseResponse(resp, &configSheet); err != nil {
@@ -60,7 +73,11 @@ func (c *Client) CreateConfigSheet(configSheet *ConfigSheet) (*ConfigSheet, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config sheet: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var createdConfigSheet ConfigSheet
 	if err := c.parseResponse(resp, &createdConfigSheet); err != nil {
@@ -71,14 +88,21 @@ func (c *Client) CreateConfigSheet(configSheet *ConfigSheet) (*ConfigSheet, erro
 }
 
 // UpdateConfigSheet updates an existing config sheet
-func (c *Client) UpdateConfigSheet(guid string, updates map[string]interface{}) (*ConfigSheet, error) {
+func (c *Client) UpdateConfigSheet(
+	guid string,
+	updates map[string]interface{},
+) (*ConfigSheet, error) {
 	path := fmt.Sprintf("/config-sheets/%s", guid)
 
 	resp, err := c.doRequest("PUT", path, updates)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update config sheet: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var updatedConfigSheet ConfigSheet
 	if err := c.parseResponse(resp, &updatedConfigSheet); err != nil {
@@ -96,7 +120,11 @@ func (c *Client) DeleteConfigSheet(guid string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete config sheet: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close response body: %v\n", err)
+		}
+	}()
 
 	var response map[string]string
 	if err := c.parseResponse(resp, &response); err != nil {
@@ -107,6 +135,9 @@ func (c *Client) DeleteConfigSheet(guid string) error {
 }
 
 // ListConfigSheetsByProject retrieves all config sheets for a specific project
-func (c *Client) ListConfigSheetsByProject(projectGUID string, activeOnly bool) ([]ConfigSheet, error) {
+func (c *Client) ListConfigSheetsByProject(
+	projectGUID string,
+	activeOnly bool,
+) ([]ConfigSheet, error) {
 	return c.ListConfigSheets(&projectGUID, nil, activeOnly)
 }

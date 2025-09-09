@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -12,7 +13,6 @@ import (
 type ConfigSheetsModel struct {
 	summaries []*schema.ConfigSheetSummary
 	cursor    int
-	selected  bool
 }
 
 // NewConfigSheetsModel creates a new config sheets model
@@ -70,7 +70,9 @@ func (m ConfigSheetsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the config sheets list
 func (m ConfigSheetsModel) View() string {
 	if len(m.summaries) == 0 {
-		return noItemsStyle.Render("\nNo config sheets found.\n\nPress 'n' to create a new config sheet\nPress 'esc' to go back")
+		return noItemsStyle.Render(
+			"\nNo config sheets found.\n\nPress 'n' to create a new config sheet\nPress 'esc' to go back",
+		)
 	}
 
 	s := "\nConfig Sheets:\n\n"

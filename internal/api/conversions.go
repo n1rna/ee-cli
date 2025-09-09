@@ -48,9 +48,9 @@ func ConvertSchemaToAPI(localSchema *schema.Schema) *Schema {
 	}
 
 	apiSchema := &Schema{
-		GUID:        localSchema.Entity.ID, // Send local UUID as GUID
-		Name:        localSchema.Entity.Name,
-		Description: localSchema.Entity.Description,
+		GUID:        localSchema.ID, // Send local UUID as GUID
+		Name:        localSchema.Name,
+		Description: localSchema.Description,
 		IsPublic:    false, // Default to private
 		Variables:   make([]Variable, len(localSchema.Variables)),
 		Extends:     localSchema.Extends,
@@ -105,9 +105,9 @@ func ConvertProjectToAPI(localProject *schema.Project) *Project {
 	}
 
 	apiProject := &Project{
-		GUID:        localProject.Entity.ID, // Send local UUID as GUID
-		Name:        localProject.Entity.Name,
-		Description: localProject.Entity.Description,
+		GUID:        localProject.ID, // Send local UUID as GUID
+		Name:        localProject.Name,
+		Description: localProject.Description,
 	}
 
 	// Set DefaultSchemaGUID if the project has a schema
@@ -144,15 +144,18 @@ func ConvertConfigSheetFromAPI(apiConfigSheet *ConfigSheet) *schema.ConfigSheet 
 }
 
 // ConvertConfigSheetToAPI converts local schema.ConfigSheet to API ConfigSheet
-func ConvertConfigSheetToAPI(localConfigSheet *schema.ConfigSheet, projectGUID, schemaGUID string) *ConfigSheet {
+func ConvertConfigSheetToAPI(
+	localConfigSheet *schema.ConfigSheet,
+	projectGUID, schemaGUID string,
+) *ConfigSheet {
 	if localConfigSheet == nil {
 		return nil
 	}
 
 	apiConfigSheet := &ConfigSheet{
-		GUID:        localConfigSheet.Entity.ID, // Send local UUID as GUID
-		Name:        localConfigSheet.Entity.Name,
-		Description: localConfigSheet.Entity.Description,
+		GUID:        localConfigSheet.ID, // Send local UUID as GUID
+		Name:        localConfigSheet.Name,
+		Description: localConfigSheet.Description,
 		ProjectGUID: projectGUID,
 		SchemaGUID:  schemaGUID,
 		Variables:   localConfigSheet.Values, // Local uses 'values', API uses 'variables'

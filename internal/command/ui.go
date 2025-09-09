@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/n1rna/ee-cli/internal/tui"
 	"github.com/spf13/cobra"
+
+	"github.com/n1rna/ee-cli/internal/tui"
 )
 
 // NewUICommand creates the UI command

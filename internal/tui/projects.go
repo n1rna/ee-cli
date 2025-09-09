@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 )
 
@@ -12,7 +13,6 @@ import (
 type ProjectsModel struct {
 	summaries []*schema.EntitySummary
 	cursor    int
-	selected  bool
 }
 
 // NewProjectsModel creates a new projects model
@@ -70,7 +70,9 @@ func (m ProjectsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the projects list
 func (m ProjectsModel) View() string {
 	if len(m.summaries) == 0 {
-		return noItemsStyle.Render("\nNo projects found.\n\nPress 'n' to create a new project\nPress 'esc' to go back")
+		return noItemsStyle.Render(
+			"\nNo projects found.\n\nPress 'n' to create a new project\nPress 'esc' to go back",
+		)
 	}
 
 	s := "\nProjects:\n\n"

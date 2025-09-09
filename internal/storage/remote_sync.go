@@ -204,40 +204,6 @@ func (r *RemoteSyncImpl) ListRemoteEntities(entityType string) ([]*schema.Entity
 
 // Helper functions for future implementation
 
-// buildAPIURL constructs a full API URL from a relative path
-func (r *RemoteSyncImpl) buildAPIURL(path string) string {
-	return r.client.config.BaseURL + "/api" + path
-}
-
-// makeAPIRequest makes an HTTP request to the remote API (placeholder)
-func (r *RemoteSyncImpl) makeAPIRequest(method, path string, body interface{}) (*http.Response, error) {
-	// TODO: Implement actual HTTP request with authentication, retries, etc.
-	return nil, fmt.Errorf("makeAPIRequest not yet implemented")
-}
-
-// detectSyncConflicts compares local and remote entities to detect conflicts
-func (r *RemoteSyncImpl) detectSyncConflicts(local, remote interface{}) (*SyncConflict, error) {
-	// TODO: Implement conflict detection logic
-	return nil, fmt.Errorf("detectSyncConflicts not yet implemented")
-}
-
-// resolveSyncConflict resolves a sync conflict based on the resolution strategy
-func (r *RemoteSyncImpl) resolveSyncConflict(conflict *SyncConflict, resolution ConflictResolution) (interface{}, error) {
-	// TODO: Implement conflict resolution logic
-	switch resolution {
-	case ConflictResolveLocal:
-		return conflict.Local, nil
-	case ConflictResolveRemote:
-		return conflict.Remote, nil
-	case ConflictResolveMerge:
-		return nil, fmt.Errorf("merge resolution not yet implemented")
-	case ConflictResolveSkip:
-		return nil, nil
-	default:
-		return nil, fmt.Errorf("unknown conflict resolution: %s", resolution)
-	}
-}
-
 // AddRemoteSyncToStorage extends UUIDStorage with remote sync capabilities
 func (s *UUIDStorage) AddRemoteSync(remoteConfig *RemoteConfig) RemoteSync {
 	client := NewRemoteClient(remoteConfig)

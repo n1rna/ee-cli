@@ -9,9 +9,10 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/n1rna/ee-cli/internal/schema"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 // ApplyCommand handles the ee apply command
@@ -115,7 +116,10 @@ func (ac *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // loadStandaloneSheet loads a standalone config sheet
-func (ac *ApplyCommand) loadStandaloneSheet(uuidStorage *storage.UUIDStorage, sheetName string) (*schema.ConfigSheet, error) {
+func (ac *ApplyCommand) loadStandaloneSheet(
+	uuidStorage *storage.UUIDStorage,
+	sheetName string,
+) (*schema.ConfigSheet, error) {
 	if !uuidStorage.EntityExists("sheets", sheetName) {
 		return nil, fmt.Errorf("config sheet '%s' not found", sheetName)
 	}
@@ -127,14 +131,20 @@ func (ac *ApplyCommand) loadStandaloneSheet(uuidStorage *storage.UUIDStorage, sh
 
 	// Verify it's actually standalone
 	if configSheet.Project != "" {
-		return nil, fmt.Errorf("config sheet '%s' is not standalone (belongs to project). Use without --standalone flag", sheetName)
+		return nil, fmt.Errorf(
+			"config sheet '%s' is not standalone (belongs to project). Use without --standalone flag",
+			sheetName,
+		)
 	}
 
 	return configSheet, nil
 }
 
 // loadProjectEnvironment loads an environment config sheet with smart project detection
-func (ac *ApplyCommand) loadProjectEnvironment(uuidStorage *storage.UUIDStorage, envName, projectFlag string) (*schema.ConfigSheet, string, error) {
+func (ac *ApplyCommand) loadProjectEnvironment(
+	uuidStorage *storage.UUIDStorage,
+	envName, projectFlag string,
+) (*schema.ConfigSheet, string, error) {
 	var project *schema.Project
 	var projectName string
 	var err error
@@ -165,7 +175,9 @@ func (ac *ApplyCommand) loadProjectEnvironment(uuidStorage *storage.UUIDStorage,
 			return nil, "", fmt.Errorf("environment '%s' not found in project '%s'. Available: %s",
 				envName, projectName, strings.Join(available, ", "))
 		} else {
-			return nil, "", fmt.Errorf("environment '%s' not found in project '%s'. No environments configured. Run 'ee sheet create --env %s' to create one",
+			return nil, "", fmt.Errorf(
+				"environment '%s' not found in project '%s'. No environments configured. "+
+					"Run 'ee sheet create --env %s' to create one",
 				envName, projectName, envName)
 		}
 	}
@@ -174,14 +186,21 @@ func (ac *ApplyCommand) loadProjectEnvironment(uuidStorage *storage.UUIDStorage,
 	configSheetName := project.GetConfigSheetName(envInfo.Name)
 	configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load config sheet '%s' for environment '%s': %w", configSheetName, envName, err)
+		return nil, "", fmt.Errorf(
+			"failed to load config sheet '%s' for environment '%s': %w",
+			configSheetName,
+			envName,
+			err,
+		)
 	}
 
 	return configSheet, projectName, nil
 }
 
 // detectCurrentProject detects the current project from .ee file or suggests projects
-func (ac *ApplyCommand) detectCurrentProject(uuidStorage *storage.UUIDStorage) (*schema.Project, string, error) {
+func (ac *ApplyCommand) detectCurrentProject(
+	uuidStorage *storage.UUIDStorage,
+) (*schema.Project, string, error) {
 	// Try to load .ee file from current directory
 	if EasyEnvFileExists("") {
 		menvFile, err := LoadEasyEnvFile("")
@@ -208,7 +227,9 @@ func (ac *ApplyCommand) detectCurrentProject(uuidStorage *storage.UUIDStorage) (
 	}
 
 	if len(projects) == 0 {
-		return nil, "", fmt.Errorf("no projects found. Run 'ee init' to create a project or use --standalone flag")
+		return nil, "", fmt.Errorf(
+			"no projects found. Run 'ee init' to create a project or use --standalone flag",
+		)
 	}
 
 	projectNames := make([]string, len(projects))
@@ -216,8 +237,10 @@ func (ac *ApplyCommand) detectCurrentProject(uuidStorage *storage.UUIDStorage) (
 		projectNames[i] = project.Name
 	}
 
-	return nil, "", fmt.Errorf("no .ee file found in current directory. Available projects: %s\nRun 'ee init' or use --project flag",
-		strings.Join(projectNames, ", "))
+	return nil, "", fmt.Errorf(
+		"no .ee file found in current directory. Available projects: %s\nRun 'ee init' or use --project flag",
+		strings.Join(projectNames, ", "),
+	)
 }
 
 // showVariables displays the environment variables that would be applied
@@ -244,7 +267,10 @@ func (ac *ApplyCommand) applyEnvironment(values map[string]string, commandArgs [
 
 	if len(commandArgs) > 0 {
 		// Run specific command
-		fmt.Printf("\n🚀 Running command with applied environment: %s\n", strings.Join(commandArgs, " "))
+		fmt.Printf(
+			"\n🚀 Running command with applied environment: %s\n",
+			strings.Join(commandArgs, " "),
+		)
 
 		cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
 		cmd.Env = env

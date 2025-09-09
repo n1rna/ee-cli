@@ -96,11 +96,11 @@ func (l *Logger) AddOutput(level LogLevel, w io.Writer) {
 func (l *Logger) AddFileOutput(level LogLevel, filename string) error {
 	// Ensure directory exists
 	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -111,7 +111,9 @@ func (l *Logger) AddFileOutput(level LogLevel, filename string) error {
 
 // getCallerInfo returns the file and line number of the caller
 func getCallerInfo() string {
-	_, file, line, ok := runtime.Caller(4) // Skip getCallerInfo, formatMessage, log, and the actual logging function
+	_, file, line, ok := runtime.Caller(
+		4,
+	) // Skip getCallerInfo, formatMessage, log, and the actual logging function
 	if !ok {
 		return "???:0"
 	}

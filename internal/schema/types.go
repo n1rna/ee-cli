@@ -138,7 +138,11 @@ type ConfigSheet struct {
 }
 
 // NewConfigSheet creates a new config sheet with generated UUID
-func NewConfigSheet(name, description string, schema SchemaReference, values map[string]string) *ConfigSheet {
+func NewConfigSheet(
+	name, description string,
+	schema SchemaReference,
+	values map[string]string,
+) *ConfigSheet {
 	if values == nil {
 		values = make(map[string]string)
 	}
@@ -152,7 +156,8 @@ func NewConfigSheet(name, description string, schema SchemaReference, values map
 
 // NewConfigSheetForProject creates a config sheet associated with a project environment
 func NewConfigSheetForProject(name, description string, schema SchemaReference,
-	projectUUID, envName string, values map[string]string) *ConfigSheet {
+	projectUUID, envName string, values map[string]string,
+) *ConfigSheet {
 	sheet := NewConfigSheet(name, description, schema, values)
 	sheet.Project = projectUUID
 	sheet.Environment = envName
@@ -418,7 +423,7 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 
 // resolveConfigSheet resolves a config sheet with all inherited values
 func (v *Validator) resolveConfigSheet(
-	sheet *ConfigSheet, schema *Schema, visited map[string]bool,
+	sheet *ConfigSheet, visited map[string]bool,
 ) (*ConfigSheet, error) {
 	if visited[sheet.ID] {
 		return nil, fmt.Errorf("circular dependency detected in config sheet %s", sheet.Name)
@@ -438,11 +443,15 @@ func (v *Validator) resolveConfigSheet(
 	for _, extendNameOrUUID := range sheet.Extends {
 		extendSheet, err := v.storage.LoadConfigSheet(extendNameOrUUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load extended config sheet %s: %w", extendNameOrUUID, err)
+			return nil, fmt.Errorf(
+				"failed to load extended config sheet %s: %w",
+				extendNameOrUUID,
+				err,
+			)
 		}
 
 		// Recursively resolve the extended config sheet
-		resolvedExtend, err := v.resolveConfigSheet(extendSheet, schema, visited)
+		resolvedExtend, err := v.resolveConfigSheet(extendSheet, visited)
 		if err != nil {
 			return nil, err
 		}
@@ -517,7 +526,7 @@ func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
 	}
 
 	// Resolve config sheet inheritance
-	resolvedSheet, err := v.resolveConfigSheet(sheet, resolvedSchema, make(map[string]bool))
+	resolvedSheet, err := v.resolveConfigSheet(sheet, make(map[string]bool))
 	if err != nil {
 		return fmt.Errorf("failed to resolve config inheritance: %w", err)
 	}
