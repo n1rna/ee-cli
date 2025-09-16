@@ -80,7 +80,6 @@ It supports schema validation, multiple environments, and inheritance.`,
 		// Global Commands - basic project operations
 		command.NewInitCommand("global"),  // Project initialization
 		command.NewApplyCommand("global"), // Apply environment variables
-		command.NewUICommand("global"),    // Terminal user interface
 
 		// Entity Management - local entity operations
 		command.NewSchemaCommand("entities"),  // Schema management
@@ -88,6 +87,7 @@ It supports schema validation, multiple environments, and inheritance.`,
 		command.NewProjectCommand("entities"), // Project management
 
 		// Remote Operations - require authentication
+		command.NewUICommand("authenticated"),     // Terminal user interface
 		command.NewPushCommand("authenticated"),   // Push to remote
 		command.NewPullCommand("authenticated"),   // Pull from remote
 		command.NewRemoteCommand("authenticated"), // Remote configuration

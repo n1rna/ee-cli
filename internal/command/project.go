@@ -19,6 +19,51 @@ type ProjectCommand struct {
 	reader *bufio.Reader
 }
 
+// resolveProjectName resolves the project name from args or .ee file
+// If args has at least one element, uses args[0] as project name
+// Otherwise, tries to get project name from .ee file in current directory
+func (c *ProjectCommand) resolveProjectName(args []string) (string, []string, error) {
+	if len(args) > 0 && args[0] != "" {
+		// Project name provided as argument
+		return args[0], args[1:], nil
+	}
+
+	// Try to get project name from .ee file
+	projectName, err := GetCurrentProject()
+	if err != nil {
+		return "", args, fmt.Errorf("no project specified and no .ee file found in current directory: %w", err)
+	}
+
+	if projectName == "" {
+		return "", args, fmt.Errorf("no project specified and .ee file does not contain a project")
+	}
+
+	return projectName, args, nil
+}
+
+// resolveProjectNameForEnvCommand resolves project name for env commands that expect:
+// - 1 arg: environment name (use .ee file for project)
+// - 2 args: project name + environment name
+func (c *ProjectCommand) resolveProjectNameForEnvCommand(args []string) (string, []string, error) {
+	switch len(args) {
+	case 0:
+		return "", args, fmt.Errorf("environment name is required")
+	case 1:
+		// Only environment name provided, use .ee file for project
+		projectName, err := GetCurrentProject()
+		if err != nil {
+			return "", args, fmt.Errorf("no project specified and no .ee file found in current directory: %w", err)
+		}
+		if projectName == "" {
+			return "", args, fmt.Errorf("no project specified and .ee file does not contain a project")
+		}
+		return projectName, args, nil
+	default:
+		// 2 or more args: first is project name, rest are environment-related
+		return args[0], args[1:], nil
+	}
+}
+
 // NewProjectCommand creates a new ee project command
 func NewProjectCommand(groupId string) *cobra.Command {
 	pc := &ProjectCommand{
@@ -127,10 +172,15 @@ func (c *ProjectCommand) newShowCommand() *cobra.Command {
 		Short: "Show detailed information about a project",
 		Long: `Show detailed information about a project including its environments and configuration.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
-  # Show project details
+  # Show project details (using .ee file)
+  ee project show
+  
+  # Show specific project
   ee project show my-project`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: c.runShow,
 	}
 }
@@ -141,7 +191,10 @@ func (c *ProjectCommand) runShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
@@ -181,10 +234,15 @@ func (c *ProjectCommand) newEditCommand() *cobra.Command {
 The editor is determined by the $EDITOR environment variable, falling back to 'vim' if not set.
 The project is presented as JSON for editing, and changes are validated and applied upon saving.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
-  # Edit a project
+  # Edit a project (using .ee file)
+  ee project edit
+  
+  # Edit specific project
   ee project edit my-project`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: c.runEdit,
 	}
 }
@@ -195,7 +253,10 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
@@ -267,10 +328,15 @@ func (c *ProjectCommand) newDeleteCommand() *cobra.Command {
 
 This operation cannot be undone.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
-  # Delete a project
+  # Delete a project (using .ee file)
+  ee project delete
+  
+  # Delete specific project
   ee project delete my-project`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: c.runDelete,
 	}
 }
@@ -281,7 +347,10 @@ func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
 
 	// Confirm deletion
 	fmt.Printf(
@@ -311,14 +380,25 @@ func (c *ProjectCommand) newEnvCommand() *cobra.Command {
 		Short: "Manage environments for projects",
 		Long: `Manage environments for projects.
 
+When no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
-  # Add environment to project
+  # Add environment (using .ee file)
+  ee project env add development
+
+  # Add environment to specific project
   ee project env add my-project development
 
-  # Remove environment from project
+  # Remove environment (using .ee file)
+  ee project env remove development
+
+  # Remove environment from specific project
   ee project env remove my-project development
 
-  # List environments in project
+  # List environments (using .ee file)
+  ee project env list
+
+  # List environments in specific project
   ee project env list my-project`,
 	}
 
@@ -335,17 +415,22 @@ Examples:
 
 func (c *ProjectCommand) newEnvAddCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "add [project-name] [environment-name]",
+		Use:   "add [project-name] <environment-name>",
 		Short: "Add an environment to a project",
 		Long: `Add an environment to a project.
 
 This will create the environment entry in the project and auto-create
 a corresponding config sheet using the naming convention.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
+  # Add development environment (using .ee file)
+  ee project env add development
+  
   # Add development environment to my-api project
   ee project env add my-api development`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: c.runEnvAdd,
 	}
 }
@@ -356,8 +441,12 @@ func (c *ProjectCommand) runEnvAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envName := args[1]
+	projectName, remainingArgs, err := c.resolveProjectNameForEnvCommand(args)
+	if err != nil {
+		return err
+	}
+
+	envName := remainingArgs[0]
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
@@ -412,17 +501,22 @@ func (c *ProjectCommand) runEnvAdd(cmd *cobra.Command, args []string) error {
 
 func (c *ProjectCommand) newEnvRemoveCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "remove [project-name] [environment-name]",
+		Use:   "remove [project-name] <environment-name>",
 		Short: "Remove an environment from a project",
 		Long: `Remove an environment from a project.
 
 This will remove the environment from the project and optionally
 delete the associated config sheet.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
+  # Remove development environment (using .ee file)
+  ee project env remove development
+  
   # Remove development environment from my-api project
   ee project env remove my-api development`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: c.runEnvRemove,
 	}
 }
@@ -433,8 +527,12 @@ func (c *ProjectCommand) runEnvRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
-	envName := args[1]
+	projectName, remainingArgs, err := c.resolveProjectNameForEnvCommand(args)
+	if err != nil {
+		return err
+	}
+
+	envName := remainingArgs[0]
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
@@ -497,10 +595,15 @@ func (c *ProjectCommand) newEnvListCommand() *cobra.Command {
 		Short: "List environments in a project",
 		Long: `List environments in a project with their config sheets.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
+  # List environments (using .ee file)
+  ee project env list
+  
   # List environments in my-api project
   ee project env list my-api`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: c.runEnvList,
 	}
 }
@@ -511,7 +614,10 @@ func (c *ProjectCommand) runEnvList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
@@ -613,10 +719,15 @@ func (c *ProjectCommand) newEnvFixCommand() *cobra.Command {
 This command updates all environment config sheets in a project to use
 the project's schema, removing any inline schema references.
 
+If no project name is provided, uses the project from the .ee file in the current directory.
+
 Examples:
+  # Fix config sheets (using .ee file)
+  ee project env fix
+  
   # Fix config sheets in my-api project
   ee project env fix my-api`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: c.runEnvFix,
 	}
 }
@@ -627,7 +738,10 @@ func (c *ProjectCommand) runEnvFix(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storage not initialized")
 	}
 
-	projectName := args[0]
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
 
 	// Load the project
 	project, err := uuidStorage.LoadProject(projectName)
