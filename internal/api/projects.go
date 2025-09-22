@@ -87,3 +87,15 @@ func (c *Client) UpdateProject(guid string, project *Project) (*Project, error) 
 
 	return &updatedProject, nil
 }
+
+// PushProject creates or updates a project based on whether it exists remotely
+func (c *Client) PushProject(project *Project) (*Project, error) {
+	// First try to get existing project by GUID
+	if existingProject, err := c.GetProject(project.GUID); err == nil {
+		// Project exists, update it
+		return c.UpdateProject(existingProject.GUID, project)
+	}
+
+	// Project doesn't exist, create it
+	return c.CreateProject(project)
+}

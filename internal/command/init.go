@@ -1,5 +1,4 @@
 // Package command implements the ee init command for project initialization
-// This implements the new project-based workflow as specified in docs/entities.md
 package command
 
 import (
@@ -10,17 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // InitCommand handles the ee init command
-type InitCommand struct {
-	projectName string
-	schemaName  string
-	remote      string
-	force       bool
-}
+type InitCommand struct{}
 
 // NewInitCommand creates a new ee init command
 func NewInitCommand(groupId string) *cobra.Command {
@@ -52,215 +46,236 @@ Examples:
 		GroupID: groupId,
 	}
 
-	cmd.Flags().StringVar(&ic.projectName, "project", "",
-		"Project name (defaults to current directory name)")
-	cmd.Flags().StringVar(&ic.schemaName, "schema", "",
-		"Schema name to use for new projects (defaults to 'default')")
-	cmd.Flags().StringVar(&ic.remote, "remote", "",
-		"Remote API base URL")
-	cmd.Flags().BoolVar(&ic.force, "force", false,
-		"Overwrite existing .ee file if it exists")
+	cmd.Flags().String("project", "", "Project name (defaults to current directory name)")
+	cmd.Flags().String("schema", "", "Schema to use for the project")
+	cmd.Flags().String("remote", "", "Remote URL for synchronization")
+	cmd.Flags().Bool("force", false, "Overwrite existing .ee file")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
 	return cmd
 }
 
 // Run executes the init command
-func (ic *InitCommand) Run(cmd *cobra.Command, args []string) error {
-	storage := GetStorage(cmd.Context())
-	if storage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	// Check if .ee file already exists
-	if EasyEnvFileExists("") && !ic.force {
-		return fmt.Errorf(".ee file already exists in current directory. Use --force to overwrite")
-	}
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
 
-	// Determine project name
-	projectName := ic.projectName
+	projectName, _ := cmd.Flags().GetString("project")
+	schemaName, _ := cmd.Flags().GetString("schema")
+	remote, _ := cmd.Flags().GetString("remote")
+	force, _ := cmd.Flags().GetBool("force")
+
+	// If no project name specified, use current directory name
 	if projectName == "" {
-		// Use current directory name as project name
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}
 		projectName = filepath.Base(cwd)
-
-		// Sanitize project name
-		projectName = sanitizeProjectName(projectName)
-		fmt.Printf("Using directory name as project name: %s\n", projectName)
+		printer.Info(fmt.Sprintf("Using current directory name as project: %s", projectName))
 	}
 
-	// Check if project already exists
-	var project *schema.Project
-	var err error
+	// Check if .ee file already exists
+	eeFile := ".ee"
+	if _, err := os.Stat(eeFile); err == nil && !force {
+		return fmt.Errorf(".ee file already exists (use --force to overwrite)")
+	}
 
-	if storage.EntityExists("projects", projectName) {
-		// Load existing project
-		project, err = storage.LoadProject(projectName)
+	// Resolve schema
+	var schemaID string
+	if schemaName != "" {
+		s, err := manager.Schemas.Get(schemaName)
 		if err != nil {
-			return fmt.Errorf("failed to load existing project: %w", err)
+			return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
 		}
-		fmt.Printf("Using existing project: %s (%s)\n", project.Name, project.ID)
-
-		// If schema is specified but different from existing, show warning
-		if ic.schemaName != "" {
-			existingSchemaName := ""
-			if summary, err := storage.GetEntitySummary("schemas", project.Schema); err == nil {
-				existingSchemaName = summary.Name
-			}
-			if existingSchemaName != ic.schemaName {
-				fmt.Printf(
-					"Warning: Existing project uses schema '%s', ignoring --schema flag\n",
-					existingSchemaName,
-				)
-			}
-		}
+		schemaID = s.ID
+		printer.Info(fmt.Sprintf("Using schema: %s", schemaName))
 	} else {
-		// Create new project
-		project, err = ic.createNewProject(storage, projectName)
+		// Create a default schema if none specified
+		defaultSchema, err := c.createDefaultSchema(manager, projectName)
 		if err != nil {
-			return fmt.Errorf("failed to create new project: %w", err)
+			return fmt.Errorf("failed to create default schema: %w", err)
 		}
-		fmt.Printf("Created new project: %s (%s)\n", project.Name, project.ID)
+		schemaID = defaultSchema.ID
+		printer.Info(fmt.Sprintf("Created default schema: %s", defaultSchema.Name))
+	}
+
+	// Create or get project
+	project, err := c.getOrCreateProject(manager, projectName, schemaID)
+	if err != nil {
+		return fmt.Errorf("failed to create project: %w", err)
 	}
 
 	// Create .ee file
-	if ic.force {
-		if err := UpdateEasyEnvFile(project.ID, ic.remote, ""); err != nil {
-			return fmt.Errorf("failed to create .ee file: %w", err)
-		}
-	} else {
-		if err := CreateEasyEnvFile(project.ID, ic.remote, ""); err != nil {
-			return fmt.Errorf("failed to create .ee file: %w", err)
-		}
+	err = c.createEEFile(eeFile, project.Name, remote)
+	if err != nil {
+		return fmt.Errorf("failed to create .ee file: %w", err)
 	}
 
-	fmt.Printf("✅ Initialized ee project in current directory\n")
-	fmt.Printf("Project: %s\n", project.Name)
-	fmt.Printf("Project ID: %s\n", project.ID)
-	if ic.remote != "" {
-		fmt.Printf("Remote: %s\n", ic.remote)
-	}
+	printer.Success(fmt.Sprintf("Initialized ee project: %s", projectName))
+	printer.Info(fmt.Sprintf("Created .ee file in current directory"))
+	printer.Info(fmt.Sprintf("Project ID: %s", project.ID))
 
 	// Show next steps
-	fmt.Printf("\nNext steps:\n")
-	if len(project.Environments) == 0 {
-		fmt.Printf("  1. Create environment config sheets:\n")
-		fmt.Printf("     ee sheet create --env development\n")
-		fmt.Printf("     ee sheet create --env production\n")
-	} else {
-		fmt.Printf("  1. Apply environment variables:\n")
-		for envName := range project.Environments {
-			fmt.Printf("     ee apply %s\n", envName)
-		}
-	}
-	if ic.remote != "" {
-		fmt.Printf("  2. Sync with remote:\n")
-		fmt.Printf("     ee sync\n")
-	}
+	printer.Info("Next steps:")
+	printer.Info("  1. Add environments: ee project env add development")
+	printer.Info("  2. Create config sheets: ee sheet create my-app-dev --project " + projectName + " --environment development")
+	printer.Info("  3. Apply environment: ee apply development")
 
 	return nil
 }
 
-// createNewProject creates a new project with the specified name
-func (ic *InitCommand) createNewProject(
-	uuidStorage *storage.UUIDStorage,
-	projectName string,
-) (*schema.Project, error) {
-	// Determine schema to use
-	var schemaID string
-	schemaName := ic.schemaName
-	if schemaName == "" {
-		schemaName = "default"
+// createDefaultSchema creates a default schema for the project
+func (c *InitCommand) createDefaultSchema(manager *entities.Manager, projectName string) (*entities.Schema, error) {
+	schemaName := "default"
+
+	// Check if default schema already exists
+	if s, err := manager.Schemas.GetByName(schemaName); err == nil {
+		return s, nil
 	}
 
-	// Check if schema exists, create if it doesn't
-	if uuidStorage.EntityExists("schemas", schemaName) {
-		// Load existing schema
-		existingSchema, err := uuidStorage.LoadSchema(schemaName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load schema '%s': %w", schemaName, err)
-		}
-		schemaID = existingSchema.ID
-		fmt.Printf("Using existing schema: %s (%s)\n", existingSchema.Name, existingSchema.ID)
-	} else {
-		// Create default schema
-		defaultSchema := ic.createDefaultSchema(schemaName)
-		if err := uuidStorage.SaveSchema(defaultSchema); err != nil {
-			return nil, fmt.Errorf("failed to save default schema: %w", err)
-		}
-		schemaID = defaultSchema.ID
-		fmt.Printf("Created default schema: %s (%s)\n", defaultSchema.Name, defaultSchema.ID)
-	}
-
-	// Create the project
-	description := fmt.Sprintf("Project initialized from %s", projectName)
-	project := schema.NewProject(projectName, description, schemaID)
-
-	// Save the project
-	if err := uuidStorage.SaveProject(project); err != nil {
-		return nil, fmt.Errorf("failed to save project: %w", err)
-	}
-
-	return project, nil
-}
-
-// createDefaultSchema creates a default schema with common environment variables
-func (ic *InitCommand) createDefaultSchema(name string) *schema.Schema {
-	variables := []schema.Variable{
+	// Create default schema with common variables
+	variables := []entities.Variable{
 		{
 			Name:     "NODE_ENV",
-			Title:    "Node.js Environment",
 			Type:     "string",
-			Default:  "development",
+			Title:    "Node environment",
 			Required: false,
+			Default:  "development",
 		},
 		{
 			Name:     "PORT",
-			Title:    "Server Port",
 			Type:     "number",
+			Title:    "Server port",
+			Required: false,
 			Default:  "3000",
-			Required: false,
 		},
 		{
-			Name:     "DATABASE_URL",
-			Title:    "Database Connection URL",
-			Type:     "url",
+			Name:     "DEBUG",
+			Type:     "boolean",
+			Title:    "Debug mode",
 			Required: false,
-		},
-		{
-			Name:     "LOG_LEVEL",
-			Title:    "Logging Level",
-			Type:     "string",
-			Default:  "info",
-			Required: false,
+			Default:  "false",
 		},
 	}
 
-	description := "Default schema created by ee init"
-	return schema.NewSchema(name, description, variables, nil)
+	return manager.Schemas.Create(
+		schemaName,
+		"Default schema created by ee init",
+		variables,
+		nil,
+	)
 }
 
-// sanitizeProjectName cleans up a project name to make it valid
-func sanitizeProjectName(name string) string {
-	// Replace invalid characters with hyphens
-	result := strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' ||
-			r == '_' {
-			return r
+// getOrCreateProject gets an existing project or creates a new one
+func (c *InitCommand) getOrCreateProject(manager *entities.Manager, projectName, schemaID string) (*entities.Project, error) {
+	// Try to get existing project
+	if p, err := manager.Projects.GetByName(projectName); err == nil {
+		// Project exists, update schema if needed
+		if p.Schema != schemaID {
+			return manager.Projects.Update(projectName, func(proj *entities.Project) error {
+				proj.Schema = schemaID
+				return nil
+			})
 		}
-		return '-'
-	}, name)
-
-	// Remove leading/trailing hyphens
-	result = strings.Trim(result, "-")
-
-	// Ensure it's not empty
-	if result == "" {
-		result = "my-project"
+		return p, nil
 	}
 
-	// Convert to lowercase
-	return strings.ToLower(result)
+	// Create new project
+	return manager.Projects.Create(
+		projectName,
+		fmt.Sprintf("Project initialized for %s", projectName),
+		schemaID,
+	)
+}
+
+// createEEFile creates the .ee configuration file
+func (c *InitCommand) createEEFile(filename, projectName, remote string) error {
+	content := fmt.Sprintf("project: %s\n", projectName)
+	if remote != "" {
+		content += fmt.Sprintf("remote: %s\n", remote)
+	}
+
+	return os.WriteFile(filename, []byte(content), 0o644)
+}
+
+// GetCurrentProject reads the project name from .ee file in current directory
+func GetCurrentProject() (string, error) {
+	eeFile := ".ee"
+
+	// Check if .ee file exists
+	if _, err := os.Stat(eeFile); os.IsNotExist(err) {
+		return "", fmt.Errorf(".ee file not found in current directory")
+	}
+
+	// Read .ee file
+	content, err := os.ReadFile(eeFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read .ee file: %w", err)
+	}
+
+	// Parse .ee file (simple key: value format)
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			if key == "project" {
+				return value, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no project specified in .ee file")
+}
+
+// GetCurrentRemote reads the remote URL from .ee file in current directory
+func GetCurrentRemote() (string, error) {
+	eeFile := ".ee"
+
+	// Check if .ee file exists
+	if _, err := os.Stat(eeFile); os.IsNotExist(err) {
+		return "", fmt.Errorf(".ee file not found in current directory")
+	}
+
+	// Read .ee file
+	content, err := os.ReadFile(eeFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read .ee file: %w", err)
+	}
+
+	// Parse .ee file (simple key: value format)
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			if key == "remote" {
+				return value, nil
+			}
+		}
+	}
+
+	return "", nil // Remote is optional
 }

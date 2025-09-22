@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // ProjectCommand handles the ee project command
@@ -49,22 +48,24 @@ func (c *ProjectCommand) resolveProjectNameForEnvCommand(args []string) (string,
 	case 0:
 		return "", args, fmt.Errorf("environment name is required")
 	case 1:
-		// Only environment name provided, use .ee file for project
+		// Only environment name provided, get project from .ee file
 		projectName, err := GetCurrentProject()
 		if err != nil {
-			return "", args, fmt.Errorf("no project specified and no .ee file found in current directory: %w", err)
+			return "", args, fmt.Errorf("no .ee file found, please specify project name: %w", err)
 		}
 		if projectName == "" {
-			return "", args, fmt.Errorf("no project specified and .ee file does not contain a project")
+			return "", args, fmt.Errorf(".ee file does not contain a project, please specify project name")
 		}
 		return projectName, args, nil
-	default:
-		// 2 or more args: first is project name, rest are environment-related
+	case 2:
+		// Both project and environment provided
 		return args[0], args[1:], nil
+	default:
+		return "", args, fmt.Errorf("too many arguments")
 	}
 }
 
-// NewProjectCommand creates a new ee project command
+// NewProjectCommand creates the project command with all subcommands
 func NewProjectCommand(groupId string) *cobra.Command {
 	pc := &ProjectCommand{
 		reader: bufio.NewReader(os.Stdin),
@@ -73,160 +74,105 @@ func NewProjectCommand(groupId string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects",
-		Long: `Create and manage projects for environment variable management.
+		Long: `Create and manage projects for organizing environment configurations.
 
-Projects contain multiple environments and can be synchronized with remote APIs.`,
+Projects group related environments together and define which schema to use
+for validation. Each project can have multiple environments (development,
+staging, production, etc.).`,
 		GroupID: groupId,
 	}
 
 	// Add subcommands
 	cmd.AddCommand(
-		pc.newListCommand(),
+		pc.newCreateCommand(),
 		pc.newShowCommand(),
 		pc.newEditCommand(),
 		pc.newDeleteCommand(),
+		pc.newListCommand(),
+		pc.newSchemaCommand(),
 		pc.newEnvCommand(),
 	)
 
 	return cmd
 }
 
-func (c *ProjectCommand) newListCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List all projects with their environments",
-		Long: `List all projects with their environments.
+func (c *ProjectCommand) newCreateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create [project-name]",
+		Short: "Create a new project",
+		Long: `Create a new project with a specified schema.
 
 Examples:
-  # List all projects
-  ee project list`,
-		Args: cobra.NoArgs,
-		RunE: c.runList,
-	}
-}
+  # Interactive mode
+  ee project create my-app
 
-func (c *ProjectCommand) runList(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
+  # With schema specified
+  ee project create my-app --schema web-service
 
-	fmt.Println("Projects and Environments:")
-	fmt.Println("────────────────────────")
-
-	projects, err := uuidStorage.ListProjects()
-	if err != nil {
-		return fmt.Errorf("failed to list projects: %w", err)
+  # With description
+  ee project create my-app --schema web-service --description "My web application"`,
+		Args: cobra.ExactArgs(1),
+		RunE: c.runCreate,
 	}
 
-	if len(projects) == 0 {
-		fmt.Println("No projects found")
-		return nil
-	}
+	cmd.Flags().String("schema", "", "Schema to use for this project")
+	cmd.Flags().String("description", "", "Project description")
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
-	for _, projectSummary := range projects {
-		// Load full project to get environment information
-		project, err := uuidStorage.LoadProject(projectSummary.Name)
-		if err != nil {
-			fmt.Printf("Project %s: (error loading details)\n", projectSummary.Name)
-			continue
-		}
-
-		if len(project.Environments) == 0 {
-			fmt.Printf("Project %s: No environments\n", projectSummary.Name)
-		} else {
-			fmt.Printf("Project %s:\n", projectSummary.Name)
-			for envName, envInfo := range project.Environments {
-				// Load config sheet to get schema information using naming convention
-				configSheetName := project.GetConfigSheetName(envInfo.Name)
-				configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
-				if err != nil {
-					fmt.Printf("  • %s (error loading configuration '%s')\n", envName, configSheetName)
-					continue
-				}
-
-				// Get schema name from sheet's schema reference
-				schemaName := "unknown"
-				if configSheet.Schema.Ref != "" {
-					// Extract schema ID from reference
-					if schemaID := strings.TrimPrefix(configSheet.Schema.Ref, "#/schemas/"); schemaID != configSheet.Schema.Ref {
-						if summary, err := uuidStorage.GetEntitySummary("schemas", schemaID); err == nil {
-							schemaName = summary.Name
-						}
-					}
-				} else {
-					schemaName = "inline"
-				}
-				fmt.Printf("  • %s (schema: %s)\n", envName, schemaName)
-			}
-		}
-		fmt.Println()
-	}
-
-	return nil
+	return cmd
 }
 
 func (c *ProjectCommand) newShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show [project-name]",
-		Short: "Show detailed information about a project",
-		Long: `Show detailed information about a project including its environments and configuration.
+		Short: "Show details of a project",
+		Long: `Show detailed information about a project including its environments.
 
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Show project details (using .ee file)
-  ee project show
-  
-  # Show specific project
-  ee project show my-project`,
+If no project name is provided, uses the project from .ee file in current directory.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: c.runShow,
 	}
+
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+
+	return cmd
 }
 
-func (c *ProjectCommand) runShow(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *ProjectCommand) newListCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all projects",
+		Args:  cobra.ExactArgs(0),
+		RunE:  c.runList,
 	}
 
-	projectName, _, err := c.resolveProjectName(args)
-	if err != nil {
-		return err
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+
+	return cmd
+}
+
+func (c *ProjectCommand) newDeleteCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete [project-name]",
+		Short: "Delete a project",
+		Long: `Delete a project and all its associated configuration sheets.
+
+WARNING: This will permanently delete all environments and their configurations
+for this project. This action cannot be undone.
+
+If no project name is provided, uses the project from .ee file in current directory.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: c.runDelete,
 	}
 
-	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
-	if err != nil {
-		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
-	}
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
-	// Display project information
-	fmt.Printf("Project: %s\n", project.Name)
-	fmt.Printf("ID: %s\n", project.ID)
-	if project.Description != "" {
-		fmt.Printf("Description: %s\n", project.Description)
-	}
-	fmt.Printf("Schema: %s\n", project.Schema)
-	fmt.Printf("Created: %s\n", project.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf("Updated: %s\n", project.UpdatedAt.Format("2006-01-02 15:04:05"))
-
-	if len(project.Environments) > 0 {
-		fmt.Printf("\nEnvironments (%d):\n", len(project.Environments))
-		for envName, envInfo := range project.Environments {
-			configSheetName := project.GetConfigSheetName(envInfo.Name)
-			fmt.Printf("  • %s → %s\n", envName, configSheetName)
-		}
-	} else {
-		fmt.Println("\nNo environments configured")
-	}
-
-	return nil
+	return cmd
 }
 
 func (c *ProjectCommand) newEditCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "edit [project-name]",
 		Short: "Edit a project using your preferred editor",
 		Long: `Edit a project using your preferred editor.
@@ -234,48 +180,239 @@ func (c *ProjectCommand) newEditCommand() *cobra.Command {
 The editor is determined by the $EDITOR environment variable, falling back to 'vim' if not set.
 The project is presented as JSON for editing, and changes are validated and applied upon saving.
 
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Edit a project (using .ee file)
-  ee project edit
-  
-  # Edit specific project
-  ee project edit my-project`,
+If no project name is provided, uses the project from .ee file in current directory.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: c.runEdit,
 	}
+
+	return cmd
+}
+
+func (c *ProjectCommand) newSchemaCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "schema [project-name] [schema-name]",
+		Short: "Set or show the schema for a project",
+		Long: `Set or show the schema for a project.
+
+With one argument (project name), shows the current schema.
+With two arguments, sets the schema for the project.
+
+If no project name is provided, uses the project from .ee file in current directory.`,
+		Args: cobra.RangeArgs(0, 2),
+		RunE: c.runSetSchema,
+	}
+
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+
+	return cmd
+}
+
+func (c *ProjectCommand) newEnvCommand() *cobra.Command {
+	envCmd := &cobra.Command{
+		Use:   "env",
+		Short: "Manage project environments",
+		Long:  `Add, remove, and list environments for a project.`,
+	}
+
+	// Add subcommands
+	envCmd.AddCommand(
+		c.newEnvAddCommand(),
+		c.newEnvRemoveCommand(),
+		c.newEnvListCommand(),
+	)
+
+	return envCmd
+}
+
+func (c *ProjectCommand) newEnvAddCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add [project-name] <environment-name>",
+		Short: "Add an environment to a project",
+		Long: `Add a new environment to a project.
+
+Examples:
+  # Add environment to current project (from .ee file)
+  ee project env add development
+
+  # Add environment to specific project
+  ee project env add my-app staging`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: c.runEnvAdd,
+	}
+}
+
+func (c *ProjectCommand) newEnvRemoveCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove [project-name] <environment-name>",
+		Short: "Remove an environment from a project",
+		Long: `Remove an environment from a project.
+
+WARNING: This will also delete any configuration sheets associated with this environment.
+
+Examples:
+  # Remove environment from current project (from .ee file)
+  ee project env remove development
+
+  # Remove environment from specific project
+  ee project env remove my-app staging`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: c.runEnvRemove,
+	}
+}
+
+func (c *ProjectCommand) newEnvListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list [project-name]",
+		Short: "List environments for a project",
+		Long: `List all environments for a project.
+
+If no project name is provided, uses the project from .ee file in current directory.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: c.runEnvList,
+	}
+}
+
+// Implementation methods
+
+func (c *ProjectCommand) runCreate(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	var manager *entities.Manager = GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
+	}
+
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.Format(format), quiet)
+
+	projectName := args[0]
+	description, _ := cmd.Flags().GetString("description")
+	schemaName, _ := cmd.Flags().GetString("schema")
+
+	var schemaID string
+	if schemaName != "" {
+		// Resolve schema name to ID
+		s, err := manager.Schemas.Get(schemaName)
+		if err != nil {
+			return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
+		}
+		schemaID = s.ID
+	}
+
+	// Create project
+	p, err := manager.Projects.Create(projectName, description, schemaID)
+	if err != nil {
+		return fmt.Errorf("failed to create project: %w", err)
+	}
+
+	printer.Success(fmt.Sprintf("Successfully created project '%s'", projectName))
+	return printer.PrintProject(p)
+}
+
+func (c *ProjectCommand) runShow(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
+	}
+
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
+
+	// Resolve project name
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
+
+	p, err := manager.Projects.Get(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to load project: %w", err)
+	}
+
+	return printer.PrintProject(p)
+}
+
+func (c *ProjectCommand) runList(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
+	}
+
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
+
+	summaries, err := manager.Projects.List()
+	if err != nil {
+		return fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	return printer.PrintProjectList(summaries)
+}
+
+func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
+	}
+
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
+
+	// Resolve project name
+	projectName, _, err := c.resolveProjectName(args)
+	if err != nil {
+		return err
+	}
+
+	// TODO: Add warning about deleting associated config sheets
+
+	if err := manager.Projects.Delete(projectName); err != nil {
+		return fmt.Errorf("failed to delete project: %w", err)
+	}
+
+	printer.Success(fmt.Sprintf("Successfully deleted project '%s'", projectName))
+	return nil
 }
 
 func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
+	// Resolve project name
 	projectName, _, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}
 
 	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
+	p, err := manager.Projects.Get(projectName)
 	if err != nil {
 		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
 	}
 
 	validator := func(data []byte) (interface{}, error) {
-		var editedProject schema.Project
+		var editedProject entities.Project
 		if err := json.Unmarshal(data, &editedProject); err != nil {
 			return nil, fmt.Errorf("invalid JSON in edited file: %w", err)
 		}
 
 		// Preserve the original ID and timestamps if they weren't changed
 		if editedProject.ID == "" {
-			editedProject.ID = project.ID
+			editedProject.ID = p.ID
 		}
 		if editedProject.CreatedAt.IsZero() {
-			editedProject.CreatedAt = project.CreatedAt
+			editedProject.CreatedAt = p.CreatedAt
 		}
 
 		// Validate the edited project
@@ -287,19 +424,22 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	saver := func(entity interface{}) error {
-		editedProject := entity.(*schema.Project)
-		return uuidStorage.SaveProject(editedProject)
+		editedProject := entity.(*entities.Project)
+		return manager.Projects.Save(editedProject)
 	}
 
 	changeReporter := func(original, edited interface{}) {
-		origProject := original.(*schema.Project)
-		editedProject := edited.(*schema.Project)
+		origProject := original.(*entities.Project)
+		editedProject := edited.(*entities.Project)
 
 		if origProject.Name != editedProject.Name {
 			fmt.Printf("  Name: %s → %s\n", origProject.Name, editedProject.Name)
 		}
 		if origProject.Description != editedProject.Description {
 			fmt.Printf("  Description updated\n")
+		}
+		if origProject.Schema != editedProject.Schema {
+			fmt.Printf("  Schema: %s → %s\n", origProject.Schema, editedProject.Schema)
 		}
 		if len(origProject.Environments) != len(editedProject.Environments) {
 			fmt.Printf(
@@ -312,7 +452,7 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 
 	return EditEntity(
 		fmt.Sprintf("project '%s'", projectName),
-		project,
+		p,
 		&BaseEditorCommands{},
 		validator,
 		saver,
@@ -320,127 +460,132 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 	)
 }
 
-func (c *ProjectCommand) newDeleteCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "delete [project-name]",
-		Short: "Delete a project",
-		Long: `Delete a project and all its associated environments and config sheets.
-
-This operation cannot be undone.
-
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Delete a project (using .ee file)
-  ee project delete
-  
-  # Delete specific project
-  ee project delete my-project`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: c.runDelete,
-	}
-}
-
-func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *ProjectCommand) runSetSchema(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	projectName, _, err := c.resolveProjectName(args)
-	if err != nil {
-		return err
-	}
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.Format(format), quiet)
 
-	// Confirm deletion
-	fmt.Printf(
-		"Are you sure you want to delete project '%s'? This will also delete all its environments and config sheets. (y/N): ",
-		projectName,
-	)
+	var projectName string
+	var err error
 
-	response, err := c.reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
+	switch len(args) {
+	case 0:
+		// Get project from .ee file
+		projectName, err = GetCurrentProject()
+		if err != nil {
+			return fmt.Errorf("no .ee file found, please specify project name: %w", err)
+		}
+		if projectName == "" {
+			return fmt.Errorf(".ee file does not contain a project, please specify project name")
+		}
 
-	response = strings.TrimSpace(strings.ToLower(response))
-	if response != "y" && response != "yes" {
-		fmt.Println("Deletion canceled")
+		// Show current schema
+		p, err := manager.Projects.Get(projectName)
+		if err != nil {
+			return fmt.Errorf("failed to load project: %w", err)
+		}
+
+		if p.Schema == "" {
+			printer.Info(fmt.Sprintf("Project '%s' has no schema set", projectName))
+		} else {
+			// Try to resolve schema ID to name
+			s, err := manager.Schemas.GetByID(p.Schema)
+			if err != nil {
+				printer.Info(fmt.Sprintf("Project '%s' uses schema ID: %s", projectName, p.Schema))
+			} else {
+				printer.Info(fmt.Sprintf("Project '%s' uses schema: %s (%s)", projectName, s.Name, s.ID))
+			}
+		}
 		return nil
-	}
 
-	// TODO: Implement project deletion in storage
-	// For now, just return an error indicating it's not implemented
-	return fmt.Errorf("project deletion not yet implemented")
-}
+	case 1:
+		// Could be project name (show schema) or schema name (set for current project)
+		// Try to determine based on .ee file existence
+		currentProject, err := GetCurrentProject()
+		if err == nil && currentProject != "" {
+			// .ee file exists, treat arg as schema name
+			projectName = currentProject
+			schemaName := args[0]
 
-func (c *ProjectCommand) newEnvCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "env",
-		Short: "Manage environments for projects",
-		Long: `Manage environments for projects.
+			s, err := manager.Schemas.Get(schemaName)
+			if err != nil {
+				return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
+			}
 
-When no project name is provided, uses the project from the .ee file in the current directory.
+			_, err = manager.Projects.Update(projectName, func(p *entities.Project) error {
+				p.Schema = s.ID
+				return nil
+			})
+			if err != nil {
+				return fmt.Errorf("failed to update project schema: %w", err)
+			}
 
-Examples:
-  # Add environment (using .ee file)
-  ee project env add development
+			printer.Success(fmt.Sprintf("Set schema for project '%s' to '%s'", projectName, schemaName))
+			return nil
+		} else {
+			// No .ee file, treat arg as project name and show schema
+			projectName = args[0]
+			p, err := manager.Projects.Get(projectName)
+			if err != nil {
+				return fmt.Errorf("failed to load project: %w", err)
+			}
 
-  # Add environment to specific project
-  ee project env add my-project development
+			if p.Schema == "" {
+				printer.Info(fmt.Sprintf("Project '%s' has no schema set", projectName))
+			} else {
+				s, err := manager.Schemas.GetByID(p.Schema)
+				if err != nil {
+					printer.Info(fmt.Sprintf("Project '%s' uses schema ID: %s", projectName, p.Schema))
+				} else {
+					printer.Info(fmt.Sprintf("Project '%s' uses schema: %s (%s)", projectName, s.Name, s.ID))
+				}
+			}
+			return nil
+		}
 
-  # Remove environment (using .ee file)
-  ee project env remove development
+	case 2:
+		// project name + schema name
+		projectName = args[0]
+		schemaName := args[1]
 
-  # Remove environment from specific project
-  ee project env remove my-project development
+		s, err := manager.Schemas.Get(schemaName)
+		if err != nil {
+			return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
+		}
 
-  # List environments (using .ee file)
-  ee project env list
+		_, err = manager.Projects.Update(projectName, func(p *entities.Project) error {
+			p.Schema = s.ID
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update project schema: %w", err)
+		}
 
-  # List environments in specific project
-  ee project env list my-project`,
-	}
+		printer.Success(fmt.Sprintf("Set schema for project '%s' to '%s'", projectName, schemaName))
+		return nil
 
-	// Add env subcommands
-	cmd.AddCommand(
-		c.newEnvAddCommand(),
-		c.newEnvRemoveCommand(),
-		c.newEnvListCommand(),
-		c.newEnvFixCommand(),
-	)
-
-	return cmd
-}
-
-func (c *ProjectCommand) newEnvAddCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "add [project-name] <environment-name>",
-		Short: "Add an environment to a project",
-		Long: `Add an environment to a project.
-
-This will create the environment entry in the project and auto-create
-a corresponding config sheet using the naming convention.
-
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Add development environment (using .ee file)
-  ee project env add development
-  
-  # Add development environment to my-api project
-  ee project env add my-api development`,
-		Args: cobra.RangeArgs(1, 2),
-		RunE: c.runEnvAdd,
+	default:
+		return fmt.Errorf("too many arguments")
 	}
 }
 
 func (c *ProjectCommand) runEnvAdd(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
+	printer := output.NewPrinter(output.FormatTable, false)
+
+	// Resolve project name and environment name
 	projectName, remainingArgs, err := c.resolveProjectNameForEnvCommand(args)
 	if err != nil {
 		return err
@@ -448,85 +593,25 @@ func (c *ProjectCommand) runEnvAdd(cmd *cobra.Command, args []string) error {
 
 	envName := remainingArgs[0]
 
-	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
+	_, err = manager.Projects.AddEnvironment(projectName, envName)
 	if err != nil {
-		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
+		return fmt.Errorf("failed to add environment: %w", err)
 	}
 
-	// Check if environment already exists
-	if _, exists := project.Environments[envName]; exists {
-		return fmt.Errorf("environment '%s' already exists in project '%s'", envName, projectName)
-	}
-
-	// Add environment to project
-	project.AddEnvironment(envName)
-
-	// Auto-create config sheet for this environment
-	configSheetName := project.GetConfigSheetName(envName)
-	description := fmt.Sprintf("Config sheet for %s", configSheetName)
-
-	// Use the project's schema - all environments inherit the project schema
-	var schemaRef schema.SchemaReference
-	if project.Schema != "" {
-		schemaRef = schema.SchemaReference{
-			Ref: "#/schemas/" + project.Schema,
-		}
-	}
-
-	configSheet := schema.NewConfigSheetForProject(
-		configSheetName,
-		description,
-		schemaRef,
-		project.ID,
-		envName,
-		make(map[string]string),
-	)
-
-	// Save config sheet
-	if err := uuidStorage.SaveConfigSheet(configSheet); err != nil {
-		return fmt.Errorf("failed to create config sheet: %w", err)
-	}
-
-	// Save updated project
-	if err := uuidStorage.SaveProject(project); err != nil {
-		return fmt.Errorf("failed to update project: %w", err)
-	}
-
-	fmt.Printf("✅ Added environment '%s' to project '%s'\n", envName, projectName)
-	fmt.Printf("📋 Created config sheet: %s\n", configSheetName)
-
+	printer.Success(fmt.Sprintf("Added environment '%s' to project '%s'", envName, projectName))
 	return nil
-}
-
-func (c *ProjectCommand) newEnvRemoveCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "remove [project-name] <environment-name>",
-		Short: "Remove an environment from a project",
-		Long: `Remove an environment from a project.
-
-This will remove the environment from the project and optionally
-delete the associated config sheet.
-
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Remove development environment (using .ee file)
-  ee project env remove development
-  
-  # Remove development environment from my-api project
-  ee project env remove my-api development`,
-		Args: cobra.RangeArgs(1, 2),
-		RunE: c.runEnvRemove,
-	}
 }
 
 func (c *ProjectCommand) runEnvRemove(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
+	printer := output.NewPrinter(output.FormatTable, false)
+
+	// Resolve project name and environment name
 	projectName, remainingArgs, err := c.resolveProjectNameForEnvCommand(args)
 	if err != nil {
 		return err
@@ -534,222 +619,44 @@ func (c *ProjectCommand) runEnvRemove(cmd *cobra.Command, args []string) error {
 
 	envName := remainingArgs[0]
 
-	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
+	_, err = manager.Projects.RemoveEnvironment(projectName, envName)
 	if err != nil {
-		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
+		return fmt.Errorf("failed to remove environment: %w", err)
 	}
 
-	// Check if environment exists
-	if _, exists := project.Environments[envName]; !exists {
-		return fmt.Errorf("environment '%s' does not exist in project '%s'", envName, projectName)
-	}
-
-	configSheetName := project.GetConfigSheetName(envName)
-
-	// Confirm deletion
-	fmt.Printf(
-		"Are you sure you want to remove environment '%s' from project '%s'? "+
-			"This will also delete the config sheet '%s'. (y/N): ",
-		envName,
-		projectName,
-		configSheetName,
-	)
-
-	response, err := c.reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
-
-	response = strings.TrimSpace(strings.ToLower(response))
-	if response != "y" && response != "yes" {
-		fmt.Println("Removal canceled")
-		return nil
-	}
-
-	// Remove environment from project
-	delete(project.Environments, envName)
-
-	// Remove config sheet
-	if uuidStorage.EntityExists("sheets", configSheetName) {
-		if err := uuidStorage.DeleteEntity("sheets", configSheetName); err != nil {
-			fmt.Printf("Warning: failed to delete config sheet '%s': %v\n", configSheetName, err)
-		} else {
-			fmt.Printf("🗑️ Deleted config sheet: %s\n", configSheetName)
-		}
-	}
-
-	// Save updated project
-	if err := uuidStorage.SaveProject(project); err != nil {
-		return fmt.Errorf("failed to update project: %w", err)
-	}
-
-	fmt.Printf("✅ Removed environment '%s' from project '%s'\n", envName, projectName)
-
+	printer.Success(fmt.Sprintf("Removed environment '%s' from project '%s'", envName, projectName))
 	return nil
-}
-
-func (c *ProjectCommand) newEnvListCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list [project-name]",
-		Short: "List environments in a project",
-		Long: `List environments in a project with their config sheets.
-
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # List environments (using .ee file)
-  ee project env list
-  
-  # List environments in my-api project
-  ee project env list my-api`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: c.runEnvList,
-	}
 }
 
 func (c *ProjectCommand) runEnvList(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
+	printer := output.NewPrinter(output.FormatTable, false)
+
+	// Resolve project name
 	projectName, _, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}
 
-	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
+	p, err := manager.Projects.Get(projectName)
 	if err != nil {
-		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
+		return fmt.Errorf("failed to load project: %w", err)
 	}
 
-	fmt.Printf("Environments in project '%s':\n", projectName)
-	fmt.Println("─────────────────────────────")
-
-	if len(project.Environments) == 0 {
-		fmt.Println("No environments configured")
+	fmt.Printf("Environments for project '%s':\n", projectName)
+	if len(p.Environments) == 0 {
+		printer.Info("No environments defined")
 		return nil
 	}
 
-	for envName, envInfo := range project.Environments {
-		configSheetName := project.GetConfigSheetName(envInfo.Name)
-		status := "✅"
-		schemaStatus := ""
-
-		// Check if config sheet exists and has correct schema
-		if !uuidStorage.EntityExists("sheets", configSheetName) {
-			status = "❌"
-		} else {
-			// Load config sheet to check schema
-			if configSheet, err := uuidStorage.LoadConfigSheet(configSheetName); err == nil {
-				if configSheet.Schema.Ref == "" {
-					schemaStatus = " (⚠️ using inline schema)"
-				} else {
-					projectSchemaRef := "#/schemas/" + project.Schema
-					if configSheet.Schema.Ref != projectSchemaRef {
-						schemaStatus = " (⚠️ schema mismatch)"
-					}
-				}
-			}
-		}
-
-		fmt.Printf("  %s %s → %s%s\n", status, envName, configSheetName, schemaStatus)
+	for envName := range p.Environments {
+		fmt.Printf("  - %s\n", envName)
 	}
 
 	return nil
-}
-
-// fixProjectConfigSheetSchemas fixes config sheets to use the project's schema
-func (c *ProjectCommand) fixProjectConfigSheetSchemas(
-	uuidStorage *storage.UUIDStorage,
-	project *schema.Project,
-) error {
-	if project.Schema == "" {
-		return fmt.Errorf("project '%s' has no schema defined", project.Name)
-	}
-
-	projectSchemaRef := schema.SchemaReference{
-		Ref: "#/schemas/" + project.Schema,
-	}
-
-	fmt.Printf("Fixing config sheets to use project schema: %s\n", project.Schema)
-
-	for _, envInfo := range project.Environments {
-		configSheetName := project.GetConfigSheetName(envInfo.Name)
-
-		if !uuidStorage.EntityExists("sheets", configSheetName) {
-			fmt.Printf("  ⏭️  Skipping %s (not found)\n", configSheetName)
-			continue
-		}
-
-		configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
-		if err != nil {
-			fmt.Printf("  ❌ Failed to load %s: %v\n", configSheetName, err)
-			continue
-		}
-
-		// Check if it needs fixing
-		if configSheet.Schema.Ref == projectSchemaRef.Ref {
-			fmt.Printf("  ✅ %s (already correct)\n", configSheetName)
-			continue
-		}
-
-		// Update the schema reference
-		configSheet.Schema = projectSchemaRef
-
-		if err := uuidStorage.SaveConfigSheet(configSheet); err != nil {
-			fmt.Printf("  ❌ Failed to save %s: %v\n", configSheetName, err)
-			continue
-		}
-
-		fmt.Printf("  🔧 Fixed %s\n", configSheetName)
-	}
-
-	return nil
-}
-
-func (c *ProjectCommand) newEnvFixCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "fix [project-name]",
-		Short: "Fix config sheets to use the project's schema",
-		Long: `Fix config sheets to use the project's schema instead of inline schemas.
-
-This command updates all environment config sheets in a project to use
-the project's schema, removing any inline schema references.
-
-If no project name is provided, uses the project from the .ee file in the current directory.
-
-Examples:
-  # Fix config sheets (using .ee file)
-  ee project env fix
-  
-  # Fix config sheets in my-api project
-  ee project env fix my-api`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: c.runEnvFix,
-	}
-}
-
-func (c *ProjectCommand) runEnvFix(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
-
-	projectName, _, err := c.resolveProjectName(args)
-	if err != nil {
-		return err
-	}
-
-	// Load the project
-	project, err := uuidStorage.LoadProject(projectName)
-	if err != nil {
-		return fmt.Errorf("failed to load project '%s': %w", projectName, err)
-	}
-
-	fmt.Printf("🔧 Fixing config sheets for project '%s'\n", projectName)
-
-	return c.fixProjectConfigSheetSchemas(uuidStorage, project)
 }

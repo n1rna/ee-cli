@@ -1,18 +1,19 @@
 // Package command implements the ee apply command with smart project detection
-// This implements the enhanced apply functionality as specified in docs/entities.md
 package command
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // ApplyCommand handles the ee apply command
@@ -23,12 +24,15 @@ func NewApplyCommand(groupId string) *cobra.Command {
 	ac := &ApplyCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "apply [environment-name] [-- command [args...]]",
-		Short: "Apply environment variables and optionally run a command",
+		Use:     "apply [environment-name|file-path] [-- command [args...]]",
+		Aliases: []string{"a"},
+		Short:   "Apply environment variables from config sheets or .env files",
 		Long: `Apply environment variables to a new shell or run a specific command with the environment.
 
-This command uses smart project detection to automatically find the current project
-and apply environment variables from the specified environment's config sheet.
+This command supports multiple sources:
+- Project environments (using smart project detection from .ee file)
+- Standalone config sheets
+- .env files (detected automatically by file path)
 
 Examples:
   # Apply development environment and start new shell
@@ -36,6 +40,12 @@ Examples:
 
   # Apply production environment and run specific command
   ee apply production -- npm start
+
+  # Apply .env file from current directory
+  ee apply .env
+
+  # Apply .env file with absolute path
+  ee apply /path/to/my-app/.env -- npm start
 
   # Apply environment from specific project
   ee apply development --project my-api
@@ -51,291 +61,314 @@ Examples:
 		GroupID: groupId,
 	}
 
-	cmd.Flags().StringP("project", "p", "", "Project name (overrides auto-detection)")
-	cmd.Flags().Bool("standalone", false, "Apply standalone config sheet")
-	cmd.Flags().Bool("dry-run", false, "Show environment variables without applying them")
+	cmd.Flags().String("project", "", "Project name (auto-detected from .ee file if not specified)")
+	cmd.Flags().BoolP("standalone", "s", false, "Apply standalone config sheet instead of project environment")
+	cmd.Flags().BoolP("dry-run", "d", false, "Show what would be applied without executing")
+	cmd.Flags().StringP("format", "f", "env", "Output format for dry-run (env, dotenv, json)")
+	cmd.Flags().BoolP("quiet", "q", false, "Suppress informational output")
 
 	return cmd
 }
 
 // Run executes the apply command
-func (ac *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	// Get flags
-	projectFlag, _ := cmd.Flags().GetString("project")
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.Format(format), quiet)
+
 	standalone, _ := cmd.Flags().GetBool("standalone")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	projectName, _ := cmd.Flags().GetString("project")
 
-	// Get target name (environment or config sheet name)
-	targetName := args[0]
-
-	// Get command to run (everything after --)
+	envOrSheetName := args[0]
 	var commandArgs []string
-	if len(args) > 1 {
-		commandArgs = args[1:]
+
+	// Find the separator "--" and split command args
+	for i, arg := range args {
+		if arg == "--" {
+			if i+1 < len(args) {
+				commandArgs = args[i+1:]
+			}
+			break
+		}
 	}
 
-	var configSheet *schema.ConfigSheet
-	var projectName string
+	var values map[string]string
 	var err error
 
-	if standalone {
-		// Load standalone config sheet
-		configSheet, err = ac.loadStandaloneSheet(uuidStorage, targetName)
+	// Detect if the argument is a file path or environment name
+	if c.isFilePath(envOrSheetName) {
+		// Apply .env file
+		values, err = c.applyEnvFile(envOrSheetName)
 		if err != nil {
 			return err
 		}
-		projectName = "standalone"
+		if !quiet {
+			absPath, _ := filepath.Abs(envOrSheetName)
+			printer.Info(fmt.Sprintf("Applying .env file: %s", absPath))
+		}
+	} else if standalone {
+		// Apply standalone config sheet
+		values, err = c.applyStandaloneSheet(manager, envOrSheetName)
+		if err != nil {
+			return err
+		}
+		if !quiet {
+			printer.Info(fmt.Sprintf("Applying standalone config sheet: %s", envOrSheetName))
+		}
 	} else {
-		// Smart project detection and environment loading
-		configSheet, projectName, err = ac.loadProjectEnvironment(uuidStorage, targetName, projectFlag)
+		// Apply project environment
+		values, err = c.applyProjectEnvironment(manager, projectName, envOrSheetName)
 		if err != nil {
 			return err
 		}
+		if !quiet {
+			actualProject := projectName
+			if actualProject == "" {
+				actualProject, _ = GetCurrentProject()
+			}
+			printer.Info(fmt.Sprintf("Applying environment '%s' from project '%s'", envOrSheetName, actualProject))
+		}
 	}
-
-	fmt.Printf("📋 Applying configuration: %s\n", configSheet.Name)
-	if !standalone {
-		fmt.Printf("Project: %s\n", projectName)
-		fmt.Printf("Environment: %s\n", targetName)
-	}
-	fmt.Printf("Variables: %d\n", len(configSheet.Values))
 
 	if dryRun {
-		fmt.Println("\n🔍 Dry run - showing variables that would be applied:")
-		ac.showVariables(configSheet.Values)
-		return nil
-	}
-
-	// Apply environment and run command or start shell
-	return ac.applyEnvironment(configSheet.Values, commandArgs)
-}
-
-// loadStandaloneSheet loads a standalone config sheet
-func (ac *ApplyCommand) loadStandaloneSheet(
-	uuidStorage *storage.UUIDStorage,
-	sheetName string,
-) (*schema.ConfigSheet, error) {
-	if !uuidStorage.EntityExists("sheets", sheetName) {
-		return nil, fmt.Errorf("config sheet '%s' not found", sheetName)
-	}
-
-	configSheet, err := uuidStorage.LoadConfigSheet(sheetName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config sheet '%s': %w", sheetName, err)
-	}
-
-	// Verify it's actually standalone
-	if configSheet.Project != "" {
-		return nil, fmt.Errorf(
-			"config sheet '%s' is not standalone (belongs to project). Use without --standalone flag",
-			sheetName,
-		)
-	}
-
-	return configSheet, nil
-}
-
-// loadProjectEnvironment loads an environment config sheet with smart project detection
-func (ac *ApplyCommand) loadProjectEnvironment(
-	uuidStorage *storage.UUIDStorage,
-	envName, projectFlag string,
-) (*schema.ConfigSheet, string, error) {
-	var project *schema.Project
-	var projectName string
-	var err error
-
-	if projectFlag != "" {
-		// Use specified project
-		project, err = uuidStorage.LoadProject(projectFlag)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to load project '%s': %w", projectFlag, err)
+		// Show what would be applied
+		printer.Info("Environment variables that would be applied:")
+		switch format {
+		case "env":
+			return printer.PrintEnvironmentExport(values)
+		case "dotenv":
+			return printer.PrintDotEnv(values)
+		case "json":
+			return printer.PrintValues(values)
+		default:
+			return fmt.Errorf("unsupported format: %s", format)
 		}
-		projectName = project.Name
+	}
+
+	// Apply environment variables
+	if len(commandArgs) > 0 {
+		// Run specific command with environment
+		return c.runCommandWithEnvironment(values, commandArgs, printer)
 	} else {
-		// Smart project detection
-		project, projectName, err = ac.detectCurrentProject(uuidStorage)
+		// Start new shell with environment
+		return c.startShellWithEnvironment(values, printer)
+	}
+}
+
+// applyStandaloneSheet applies a standalone config sheet
+func (c *ApplyCommand) applyStandaloneSheet(manager *entities.Manager, sheetName string) (map[string]string, error) {
+	cs, err := manager.ConfigSheets.Get(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("config sheet '%s' not found: %w", sheetName, err)
+	}
+
+	if !cs.IsStandalone() {
+		return nil, fmt.Errorf("config sheet '%s' is not standalone (it's associated with project '%s')", sheetName, cs.Project)
+	}
+
+	return cs.Values, nil
+}
+
+// applyProjectEnvironment applies a project environment
+func (c *ApplyCommand) applyProjectEnvironment(manager *entities.Manager, projectName, envName string) (map[string]string, error) {
+	// If no project name specified, try to get from .ee file
+	if projectName == "" {
+		var err error
+		projectName, err = GetCurrentProject()
 		if err != nil {
-			return nil, "", err
+			return nil, fmt.Errorf("no project specified and no .ee file found: %w", err)
 		}
+		if projectName == "" {
+			return nil, fmt.Errorf("no project specified and .ee file is empty")
+		}
+	}
+
+	// Load project
+	p, err := manager.Projects.Get(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
 	}
 
 	// Check if environment exists in project
-	envInfo, exists := project.Environments[envName]
-	if !exists {
-		available := make([]string, 0, len(project.Environments))
-		for env := range project.Environments {
-			available = append(available, env)
-		}
-		if len(available) > 0 {
-			return nil, "", fmt.Errorf("environment '%s' not found in project '%s'. Available: %s",
-				envName, projectName, strings.Join(available, ", "))
+	if _, exists := p.Environments[envName]; !exists {
+		return nil, fmt.Errorf("environment '%s' not found in project '%s'", envName, projectName)
+	}
+
+	// Find config sheet for this environment
+	configSheetName := p.GetConfigSheetName(envName)
+	cs, err := manager.ConfigSheets.Get(configSheetName)
+	if err != nil {
+		return nil, fmt.Errorf("config sheet '%s' not found for environment '%s': %w", configSheetName, envName, err)
+	}
+
+	return cs.Values, nil
+}
+
+// runCommandWithEnvironment runs a command with the specified environment variables
+func (c *ApplyCommand) runCommandWithEnvironment(values map[string]string, commandArgs []string, printer *output.Printer) error {
+	if len(commandArgs) == 0 {
+		return fmt.Errorf("no command specified")
+	}
+
+	cmdName := commandArgs[0]
+	args := commandArgs[1:]
+
+	// Create command
+	cmd := exec.Command(cmdName, args...)
+
+	// Set up environment
+	cmd.Env = os.Environ()
+	for key, value := range values {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	// Set up I/O
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	printer.Info(fmt.Sprintf("Running command: %s", strings.Join(commandArgs, " ")))
+
+	// Run command
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("command failed: %w", err)
+	}
+
+	return nil
+}
+
+// startShellWithEnvironment starts a new shell with the specified environment variables
+func (c *ApplyCommand) startShellWithEnvironment(values map[string]string, printer *output.Printer) error {
+	// Determine shell
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		if runtime.GOOS == "windows" {
+			shell = "cmd"
 		} else {
-			return nil, "", fmt.Errorf(
-				"environment '%s' not found in project '%s'. No environments configured. "+
-					"Run 'ee sheet create --env %s' to create one",
-				envName, projectName, envName)
+			shell = "/bin/bash"
 		}
 	}
 
-	// Load the config sheet using naming convention
-	configSheetName := project.GetConfigSheetName(envInfo.Name)
-	configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
-	if err != nil {
-		return nil, "", fmt.Errorf(
-			"failed to load config sheet '%s' for environment '%s': %w",
-			configSheetName,
-			envName,
-			err,
-		)
-	}
-
-	return configSheet, projectName, nil
-}
-
-// detectCurrentProject detects the current project from .ee file or suggests projects
-func (ac *ApplyCommand) detectCurrentProject(
-	uuidStorage *storage.UUIDStorage,
-) (*schema.Project, string, error) {
-	// Try to load .ee file from current directory
-	if EasyEnvFileExists("") {
-		menvFile, err := LoadEasyEnvFile("")
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to load .ee file: %w", err)
-		}
-
-		if menvFile.Project == "" {
-			return nil, "", fmt.Errorf(".ee file found but no project ID specified")
-		}
-
-		project, err := uuidStorage.LoadProject(menvFile.Project)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to load project from .ee file: %w", err)
-		}
-
-		return project, project.Name, nil
-	}
-
-	// No .ee file found, suggest available projects
-	projects, err := uuidStorage.ListProjects()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to list projects: %w", err)
-	}
-
-	if len(projects) == 0 {
-		return nil, "", fmt.Errorf(
-			"no projects found. Run 'ee init' to create a project or use --standalone flag",
-		)
-	}
-
-	projectNames := make([]string, len(projects))
-	for i, project := range projects {
-		projectNames[i] = project.Name
-	}
-
-	return nil, "", fmt.Errorf(
-		"no .ee file found in current directory. Available projects: %s\nRun 'ee init' or use --project flag",
-		strings.Join(projectNames, ", "),
-	)
-}
-
-// showVariables displays the environment variables that would be applied
-func (ac *ApplyCommand) showVariables(values map[string]string) {
-	for key, value := range values {
-		// Mask sensitive values
-		displayValue := value
-		if ac.isSensitiveKey(key) {
-			displayValue = "***masked***"
-		}
-		fmt.Printf("  %s=%s\n", key, displayValue)
-	}
-}
-
-// applyEnvironment applies environment variables and runs command or starts shell
-func (ac *ApplyCommand) applyEnvironment(values map[string]string, commandArgs []string) error {
-	// Prepare environment
-	env := os.Environ()
-
-	// Add our variables
-	for key, value := range values {
-		env = append(env, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	if len(commandArgs) > 0 {
-		// Run specific command
-		fmt.Printf(
-			"\n🚀 Running command with applied environment: %s\n",
-			strings.Join(commandArgs, " "),
-		)
-
-		cmd := exec.Command(commandArgs[0], commandArgs[1:]...)
-		cmd.Env = env
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		return cmd.Run()
+	// Create shell command
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd")
 	} else {
-		// Start new shell
-		shell := ac.getDefaultShell()
-		fmt.Printf("\n🐚 Starting new shell with applied environment: %s\n", shell)
-		fmt.Println("Type 'exit' to return to the original environment")
-
-		cmd := exec.Command(shell)
-		cmd.Env = env
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		return cmd.Run()
+		cmd = exec.Command(shell)
 	}
+
+	// Set up environment
+	cmd.Env = os.Environ()
+	for key, value := range values {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+
+	// Set up I/O
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	printer.Info(fmt.Sprintf("Starting shell with environment variables applied"))
+	printer.Info(fmt.Sprintf("Shell: %s", shell))
+	printer.Info(fmt.Sprintf("Applied %d environment variables", len(values)))
+
+	// Start shell
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("shell failed: %w", err)
+	}
+
+	return nil
 }
 
-// getDefaultShell returns the default shell for the current platform
-func (ac *ApplyCommand) getDefaultShell() string {
-	// Check SHELL environment variable first
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell
+// isFilePath detects if the argument is a file path rather than an environment name
+// Returns true if the argument starts with '.', '/', '~', or contains a file extension
+func (c *ApplyCommand) isFilePath(arg string) bool {
+	// Check if it's a relative path starting with '.' or current directory
+	if strings.HasPrefix(arg, ".") {
+		return true
 	}
 
-	// Platform-specific defaults
-	switch runtime.GOOS {
-	case "windows":
-		if powershell, err := exec.LookPath("pwsh"); err == nil {
-			return powershell
+	// Check if it's an absolute path starting with '/' or '~'
+	if strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "~") {
+		return true
+	}
+
+	// Check if it contains a file extension
+	if filepath.Ext(arg) != "" {
+		return true
+	}
+
+	// Check if the file actually exists
+	if _, err := os.Stat(arg); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// applyEnvFile reads and parses a .env file
+func (c *ApplyCommand) applyEnvFile(filePath string) (map[string]string, error) {
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf(".env file not found: %s", filePath)
+	}
+
+	// Open file
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open .env file: %w", err)
+	}
+	defer file.Close()
+
+	values := make(map[string]string)
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-		if powershell, err := exec.LookPath("powershell"); err == nil {
-			return powershell
+
+		// Parse KEY=VALUE format
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid line %d in .env file: %s", lineNum, line)
 		}
-		return "cmd"
-	default:
-		// Unix-like systems
-		shells := []string{"zsh", "bash", "sh"}
-		for _, shell := range shells {
-			if path, err := exec.LookPath(shell); err == nil {
-				return path
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Remove surrounding quotes if present
+		if len(value) >= 2 {
+			if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
+				(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+				value = value[1 : len(value)-1]
 			}
 		}
-		return "/bin/sh"
-	}
-}
 
-// isSensitiveKey checks if a key likely contains sensitive information
-func (ac *ApplyCommand) isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
-	sensitivePatterns := []string{
-		"password", "secret", "key", "token", "credential",
-		"api_key", "auth", "private", "cert", "ssl",
-	}
-
-	for _, pattern := range sensitivePatterns {
-		if strings.Contains(key, pattern) {
-			return true
+		// Validate key name
+		if key == "" {
+			return nil, fmt.Errorf("empty variable name on line %d", lineNum)
 		}
+
+		values[key] = value
 	}
-	return false
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading .env file: %w", err)
+	}
+
+	return values, nil
 }

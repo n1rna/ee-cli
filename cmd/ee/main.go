@@ -9,7 +9,7 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/command"
 	"github.com/n1rna/ee-cli/internal/config"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
 )
 
 var (
@@ -21,39 +21,37 @@ var (
 )
 
 func main() {
-	// Create root command
-	rootCmd := &cobra.Command{
-		Use:   "ee",
-		Short: "ee - Environment variable manager with schema support",
-		Long: `ee is a CLI tool for managing environment variables in a structured way.
-It supports schema validation, multiple environments, and inheritance.`,
-		Version: version,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Load configuration from environment
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load configuration: %w", err)
-			}
+	// Create root command using the dedicated root command module
+	rootCmd := command.NewRootCommand()
+	rootCmd.Version = version
 
-			// Override base directory if specified via flag
-			if cfgBaseDir != "" {
-				cfg.BaseDir = cfgBaseDir
-				// Re-validate after override
-				if err := cfg.Validate(); err != nil {
-					return fmt.Errorf("invalid configuration: %w", err)
-				}
-			}
+	// Set up persistent pre-run for entity manager initialization
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Load configuration from environment
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
 
-			// Initialize UUID-based storage with configuration
-			store, err := storage.NewUUIDStorage(cfg)
-			if err != nil {
-				return fmt.Errorf("failed to initialize storage: %w", err)
+		// Override base directory if specified via flag
+		if cfgBaseDir != "" {
+			cfg.BaseDir = cfgBaseDir
+			// Re-validate after override
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("invalid configuration: %w", err)
 			}
+		}
 
-			// Store in command context
-			cmd.SetContext(command.WithStorage(cmd.Context(), store))
-			return nil
-		},
+		// Initialize entity manager
+		entityManager, err := entities.NewManager(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize entity manager: %w", err)
+		}
+
+		// Store entity manager in command context
+		ctx := command.WithEntityManager(cmd.Context(), entityManager)
+		cmd.SetContext(ctx)
+		return nil
 	}
 
 	// Add global flags
@@ -87,10 +85,10 @@ It supports schema validation, multiple environments, and inheritance.`,
 		command.NewProjectCommand("entities"), // Project management
 
 		// Remote Operations - require authentication
-		command.NewUICommand("authenticated"),     // Terminal user interface
-		command.NewPushCommand("authenticated"),   // Push to remote
-		command.NewPullCommand("authenticated"),   // Pull from remote
-		command.NewRemoteCommand("authenticated"), // Remote configuration
+		command.NewPushCommand("authenticated"), // Push to remote
+		command.NewPullCommand("authenticated"), // Pull from remote
+		// command.NewUICommand("authenticated"),     // Terminal user interface - TODO: refactor
+		// command.NewRemoteCommand("authenticated"), // Remote configuration - TODO: refactor
 	)
 
 	// Enable version flag

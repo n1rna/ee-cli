@@ -3,20 +3,20 @@ package command
 import (
 	"context"
 
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
 )
 
-type storageKey struct{}
+type entityManagerKey struct{}
 
-// WithStorage returns a new context with the UUID storage instance
-func WithStorage(ctx context.Context, store *storage.UUIDStorage) context.Context {
-	return context.WithValue(ctx, storageKey{}, store)
+// WithEntityManager returns a new context with the entity manager instance
+func WithEntityManager(ctx context.Context, manager *entities.Manager) context.Context {
+	return context.WithValue(ctx, entityManagerKey{}, manager)
 }
 
-// GetStorage retrieves the UUID storage instance from the context
-func GetStorage(ctx context.Context) *storage.UUIDStorage {
-	if store, ok := ctx.Value(storageKey{}).(*storage.UUIDStorage); ok {
-		return store
+// GetEntityManager retrieves the entity manager instance from the context
+func GetEntityManager(ctx context.Context) *entities.Manager {
+	if manager, ok := ctx.Value(entityManagerKey{}).(*entities.Manager); ok {
+		return manager
 	}
 	return nil
 }

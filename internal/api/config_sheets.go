@@ -134,10 +134,34 @@ func (c *Client) DeleteConfigSheet(guid string) error {
 	return nil
 }
 
+// ListAllConfigSheets retrieves all config sheets without filtering
+func (c *Client) ListAllConfigSheets() ([]ConfigSheet, error) {
+	return c.ListConfigSheets(nil, nil, false)
+}
+
 // ListConfigSheetsByProject retrieves all config sheets for a specific project
 func (c *Client) ListConfigSheetsByProject(
 	projectGUID string,
 	activeOnly bool,
 ) ([]ConfigSheet, error) {
 	return c.ListConfigSheets(&projectGUID, nil, activeOnly)
+}
+
+// PushConfigSheet creates or updates a config sheet based on whether it exists remotely
+func (c *Client) PushConfigSheet(configSheet *ConfigSheet) (*ConfigSheet, error) {
+	// First try to get existing config sheet by GUID
+	if existingSheet, err := c.GetConfigSheet(configSheet.GUID); err == nil {
+		// Config sheet exists, update it
+		updates := map[string]interface{}{
+			"name":        configSheet.Name,
+			"description": configSheet.Description,
+			"variables":   configSheet.Variables,
+			"extends":     configSheet.Extends,
+			"is_active":   configSheet.IsActive,
+		}
+		return c.UpdateConfigSheet(existingSheet.GUID, updates)
+	}
+
+	// Config sheet doesn't exist, create it
+	return c.CreateConfigSheet(configSheet)
 }

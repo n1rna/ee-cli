@@ -1,5 +1,4 @@
 // Package command implements the ee sheet command for managing config sheets
-// This implements the new config sheet management as specified in docs/entities.md
 package command
 
 import (
@@ -7,15 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // SheetCommand handles the ee sheet command
@@ -47,1188 +43,494 @@ They can be standalone or associated with projects and environments.`,
 		sc.newExportCommand(),
 		sc.newEditCommand(),
 		sc.newDeleteCommand(),
+		sc.newSetCommand(),
+		sc.newUnsetCommand(),
 	)
 
 	return cmd
 }
 
-// newCreateCommand creates the sheet create subcommand
-func (sc *SheetCommand) newCreateCommand() *cobra.Command {
+func (c *SheetCommand) newCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create [sheet-name]",
-		Short: "Create a new configuration sheet",
-		Long: `Create a new configuration sheet interactively or by importing from files.
+		Short: "Create a new config sheet",
+		Long: `Create a new configuration sheet with values for environment variables.
 
 Examples:
-  # Create sheet interactively
-  ee sheet create my-config
+  # Create standalone config sheet
+  ee sheet create my-config --schema web-service
 
-  # Create sheet for project environment
-  ee sheet create --env development
+  # Create config sheet for project environment
+  ee sheet create my-app-dev --project my-app --environment development --schema web-service
 
-  # Import from .env file
-  ee sheet create my-config --import-env config.env
-
-  # Import from JSON file
-  ee sheet create my-config --import-json config.json
-
-  # Create sheet with specific schema
-  ee sheet create my-config --schema api-schema
-`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: sc.runCreate,
+  # Create interactively
+  ee sheet create my-config`,
+		Args: cobra.ExactArgs(1),
+		RunE: c.runCreate,
 	}
 
-	cmd.Flags().String("env", "", "Environment name (creates sheet for current project)")
-	cmd.Flags().String("schema", "", "Schema name to use for validation")
-	cmd.Flags().String("import-env", "", "Import values from .env file")
-	cmd.Flags().String("import-json", "", "Import values from JSON file")
-	cmd.Flags().Bool("standalone", false, "Create standalone sheet (not associated with project)")
-	cmd.Flags().Bool("interactive", false, "Create sheet interactively even when importing")
-
-	// Make import flags mutually exclusive
-	cmd.MarkFlagsMutuallyExclusive("import-env", "import-json")
+	cmd.Flags().String("schema", "", "Schema to use for validation")
+	cmd.Flags().String("project", "", "Project to associate this sheet with")
+	cmd.Flags().String("environment", "", "Environment within the project")
+	cmd.Flags().String("description", "", "Sheet description")
+	cmd.Flags().StringToString("value", map[string]string{}, "Set variable values (format: --value KEY=VALUE)")
+	cmd.Flags().String("import", "", "Import values from a file (YAML or JSON)")
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
 	return cmd
 }
 
-// newShowCommand creates the sheet show subcommand
-func (sc *SheetCommand) newShowCommand() *cobra.Command {
+func (c *SheetCommand) newShowCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show [sheet-name]",
-		Short: "Show configuration sheet details",
-		Long: `Show details of a configuration sheet.
-
-You can reference sheets either by name or by project/environment combination.
-
-Examples:
-  # Show by sheet name
-  ee sheet show my-config
-
-  # Show by environment (uses current project from .ee file)
-  ee sheet show --env development
-
-  # Show by project and environment
-  ee sheet show --env production --project my-api
-`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: sc.runShow,
+		Short: "Show details of a config sheet",
+		Args:  cobra.ExactArgs(1),
+		RunE:  c.runShow,
 	}
 
-	cmd.Flags().StringP("project", "p", "", "Project name (overrides auto-detection from .ee)")
-	cmd.Flags().String("env", "", "Environment name")
+	cmd.Flags().String("format", "table", "Output format (table, json)")
 
 	return cmd
 }
 
-// newListCommand creates the sheet list subcommand
-func (sc *SheetCommand) newListCommand() *cobra.Command {
+func (c *SheetCommand) newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List configuration sheets",
-		RunE:  sc.runList,
+		Args:  cobra.ExactArgs(0),
+		RunE:  c.runList,
 	}
 
-	cmd.Flags().String("project", "", "Filter by project name")
+	cmd.Flags().String("project", "", "Filter by project")
+	cmd.Flags().String("environment", "", "Filter by environment")
 	cmd.Flags().Bool("standalone", false, "Show only standalone sheets")
+	cmd.Flags().String("format", "table", "Output format (table, json)")
 
 	return cmd
 }
 
-// newExportCommand creates the sheet export subcommand
-func (sc *SheetCommand) newExportCommand() *cobra.Command {
+func (c *SheetCommand) newExportCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export [sheet-name]",
-		Short: "Export configuration sheet in different formats",
-		Long: `Export a configuration sheet in various formats for different use cases.
-
-You can reference sheets either by name or by project/environment combination.
-
-Supported formats:
-  - dotenv: .env file format (KEY=value)
-  - bash: Bash export commands script
-  - json: JSON object format
-  - yaml: YAML format
+		Short: "Export config sheet values",
+		Long: `Export configuration sheet values in various formats.
 
 Examples:
-  # Export by sheet name
-  ee sheet export my-config
+  # Export as environment variables
+  ee sheet export my-config --format env
 
-  # Export by environment (uses current project from .ee file)
-  ee sheet export --env development
+  # Export as .env file
+  ee sheet export my-config --format dotenv
 
-  # Export by project and environment
-  ee sheet export --env production --project my-api
-
-  # Export as bash script
-  ee sheet export --env development --format bash
-
-  # Export to JSON file
-  ee sheet export my-config --format json --output config.json
-`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: sc.runExport,
+  # Export as JSON
+  ee sheet export my-config --format json`,
+		Args: cobra.ExactArgs(1),
+		RunE: c.runExport,
 	}
 
-	cmd.Flags().StringP("format", "f", "dotenv", "Export format (dotenv, bash, json, yaml)")
-	cmd.Flags().StringP("output", "o", "", "Output file (default: stdout)")
-	cmd.Flags().Bool("no-comments", false, "Exclude comments in output")
-	cmd.Flags().StringP("project", "p", "", "Project name (overrides auto-detection from .ee)")
-	cmd.Flags().String("env", "", "Environment name")
+	cmd.Flags().String("format", "env", "Export format (env, dotenv, json)")
 
 	return cmd
 }
 
-// newDeleteCommand creates the sheet delete subcommand
-func (sc *SheetCommand) newDeleteCommand() *cobra.Command {
+func (c *SheetCommand) newEditCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "edit [sheet-name]",
+		Short: "Edit a config sheet using your preferred editor",
+		Long: `Edit a config sheet using your preferred editor.
+
+The editor is determined by the $EDITOR environment variable, falling back to 'vim' if not set.
+The sheet is presented as JSON for editing, and changes are validated and applied upon saving.`,
+		Args: cobra.ExactArgs(1),
+		RunE: c.runEdit,
+	}
+
+	return cmd
+}
+
+func (c *SheetCommand) newDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete [sheet-name]",
-		Short: "Delete a configuration sheet",
-		Long: `Delete a configuration sheet.
-
-You can reference sheets either by name or by project/environment combination.
-
-Examples:
-  # Delete by sheet name
-  ee sheet delete my-config
-
-  # Delete by environment (uses current project from .ee file)
-  ee sheet delete --env development
-
-  # Delete by project and environment
-  ee sheet delete --env staging --project my-api
-`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: sc.runDelete,
+		Short: "Delete a config sheet",
+		Args:  cobra.ExactArgs(1),
+		RunE:  c.runDelete,
 	}
 
-	cmd.Flags().StringP("project", "p", "", "Project name (overrides auto-detection from .ee)")
-	cmd.Flags().String("env", "", "Environment name")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
 	return cmd
 }
 
-// runCreate handles the sheet create command
-func (sc *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *SheetCommand) newSetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "set [sheet-name] <variable-name> <value>",
+		Short: "Set a variable value in a config sheet",
+		Args:  cobra.ExactArgs(3),
+		RunE:  c.runSet,
 	}
 
-	// Get flags
-	envFlag, _ := cmd.Flags().GetString("env")
-	schemaFlag, _ := cmd.Flags().GetString("schema")
-	importEnvFlag, _ := cmd.Flags().GetString("import-env")
-	importJSONFlag, _ := cmd.Flags().GetString("import-json")
-	standalone, _ := cmd.Flags().GetBool("standalone")
-	interactive, _ := cmd.Flags().GetBool("interactive")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
-	var sheetName string
-	var projectAssociated bool
-	var projectID string
+	return cmd
+}
 
-	// Determine sheet name and project association
-	if envFlag != "" {
-		// Creating sheet for project environment
-		if !EasyEnvFileExists("") {
-			return fmt.Errorf(".ee file not found. Run 'ee init' first or use --standalone flag")
-		}
-
-		menvFile, err := LoadEasyEnvFile("")
-		if err != nil {
-			return fmt.Errorf("failed to load .ee file: %w", err)
-		}
-
-		if menvFile.Project == "" {
-			return fmt.Errorf("no project ID found in .ee file")
-		}
-
-		project, err := uuidStorage.LoadProject(menvFile.Project)
-		if err != nil {
-			return fmt.Errorf("failed to load project: %w", err)
-		}
-
-		// Check if environment already exists
-		if _, exists := project.Environments[envFlag]; exists {
-			return fmt.Errorf(
-				"environment '%s' already exists for project '%s'",
-				envFlag,
-				project.Name,
-			)
-		}
-
-		sheetName = fmt.Sprintf("%s-%s", project.Name, envFlag)
-		projectAssociated = true
-		projectID = project.ID
-
-		fmt.Printf(
-			"Creating config sheet for project '%s' environment '%s'\n",
-			project.Name,
-			envFlag,
-		)
-	} else if len(args) > 0 {
-		// Using provided sheet name
-		sheetName = args[0]
-		projectAssociated = !standalone
-
-		if projectAssociated && EasyEnvFileExists("") {
-			menvFile, err := LoadEasyEnvFile("")
-			if err == nil && menvFile.Project != "" {
-				projectID = menvFile.Project
-			}
-		}
-	} else {
-		return fmt.Errorf("sheet name or --env flag required")
+func (c *SheetCommand) newUnsetCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unset [sheet-name] <variable-name>",
+		Short: "Remove a variable value from a config sheet",
+		Args:  cobra.ExactArgs(2),
+		RunE:  c.runUnset,
 	}
 
-	// Check if sheet already exists
-	if uuidStorage.EntityExists("sheets", sheetName) {
-		return fmt.Errorf("config sheet '%s' already exists", sheetName)
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+
+	return cmd
+}
+
+// Implementation methods
+
+func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	var manager *entities.Manager = GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	// Determine schema to use
-	var schemaRef schema.SchemaReference
-	if schemaFlag != "" {
-		// Use specified schema
-		if !uuidStorage.EntityExists("schemas", schemaFlag) {
-			return fmt.Errorf("schema '%s' not found", schemaFlag)
-		}
-		schemaObj, err := uuidStorage.LoadSchema(schemaFlag)
-		if err != nil {
-			return fmt.Errorf("failed to load schema '%s': %w", schemaFlag, err)
-		}
-		schemaRef = schema.SchemaReference{Ref: "#/schemas/" + schemaObj.ID}
-	} else if projectAssociated && projectID != "" {
-		// Use project's schema
-		project, err := uuidStorage.LoadProject(projectID)
-		if err != nil {
-			return fmt.Errorf("failed to load project: %w", err)
-		}
-		schemaRef = schema.SchemaReference{Ref: "#/schemas/" + project.Schema}
-	} else {
-		// Create with inline schema (will be populated during creation)
-		schemaRef = schema.SchemaReference{Variables: make(map[string]schema.Variable)}
-	}
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.Format(format), quiet)
 
-	// Initialize values map
-	var values map[string]string
+	sheetName := args[0]
+	description, _ := cmd.Flags().GetString("description")
+	schemaName, _ := cmd.Flags().GetString("schema")
+	projectName, _ := cmd.Flags().GetString("project")
+	envName, _ := cmd.Flags().GetString("environment")
+	values, _ := cmd.Flags().GetStringToString("value")
+	importFile, _ := cmd.Flags().GetString("import")
 
 	// Import values from file if specified
-	if importEnvFlag != "" {
-		var err error
-		values, err = sc.importFromEnvFile(importEnvFlag)
+	if importFile != "" {
+		importedValues, err := c.importValuesFromFile(importFile)
 		if err != nil {
-			return fmt.Errorf("failed to import from .env file: %w", err)
+			return fmt.Errorf("failed to import values: %w", err)
 		}
-		fmt.Printf("Imported %d values from %s\n", len(values), importEnvFlag)
-	} else if importJSONFlag != "" {
-		var err error
-		values, err = sc.importFromJSONFile(importJSONFlag)
+		// Merge with CLI values (CLI values take precedence)
+		for k, v := range values {
+			importedValues[k] = v
+		}
+		values = importedValues
+	}
+
+	// Create schema reference
+	var schemaRef entities.SchemaReference
+	if schemaName != "" {
+		s, err := manager.Schemas.Get(schemaName)
 		if err != nil {
-			return fmt.Errorf("failed to import from JSON file: %w", err)
+			return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
 		}
-		fmt.Printf("Imported %d values from %s\n", len(values), importJSONFlag)
-	} else {
-		values = make(map[string]string)
+		schemaRef.Ref = "#/schemas/" + s.ID
 	}
 
-	// Interactive mode for additional/missing values
-	if interactive || (len(values) == 0 && (importEnvFlag == "" && importJSONFlag == "")) {
-		var err error
-		values, err = sc.collectValuesInteractively(schemaRef, values, uuidStorage)
+	var cs *entities.ConfigSheet
+
+	if projectName != "" {
+		// Create project-associated config sheet
+		if envName == "" {
+			return fmt.Errorf("environment name is required when project is specified")
+		}
+
+		p, err := manager.Projects.Get(projectName)
 		if err != nil {
-			return fmt.Errorf("interactive collection failed: %w", err)
-		}
-	}
-
-	// Create config sheet
-	var configSheet *schema.ConfigSheet
-	if projectAssociated {
-		configSheet = schema.NewConfigSheetForProject(
-			sheetName,
-			fmt.Sprintf("Config sheet for %s", sheetName),
-			schemaRef,
-			projectID,
-			envFlag, // environment name (empty for non-env sheets)
-			values,
-		)
-	} else {
-		configSheet = schema.NewConfigSheet(
-			sheetName,
-			fmt.Sprintf("Standalone config sheet: %s", sheetName),
-			schemaRef,
-			values,
-		)
-	}
-
-	// Save config sheet
-	if err := uuidStorage.SaveConfigSheet(configSheet); err != nil {
-		return fmt.Errorf("failed to save config sheet: %w", err)
-	}
-
-	fmt.Printf("✅ Created config sheet: %s (%s)\n", configSheet.Name, configSheet.ID)
-
-	// Update project if this is an environment sheet
-	if projectAssociated && envFlag != "" && projectID != "" {
-		project, err := uuidStorage.LoadProject(projectID)
-		if err != nil {
-			return fmt.Errorf("failed to load project: %w", err)
+			return fmt.Errorf("project '%s' not found: %w", projectName, err)
 		}
 
-		project.AddEnvironment(envFlag)
-		if err := uuidStorage.SaveProject(project); err != nil {
-			return fmt.Errorf("failed to update project: %w", err)
+		// Create config sheet without validation first
+		cs = entities.NewConfigSheetForProject(sheetName, description, schemaRef, p.ID, envName, values)
+
+		// Validate using manager's validator
+		validator := manager.GetValidator()
+		if err := validator.ValidateConfigSheet(cs); err != nil {
+			return fmt.Errorf("config sheet validation failed: %w", err)
 		}
 
-		fmt.Printf("✅ Added environment '%s' to project '%s'\n", envFlag, project.Name)
-	}
-
-	return nil
-}
-
-// importFromEnvFile imports key-value pairs from a .env file
-func (sc *SheetCommand) importFromEnvFile(filename string) (map[string]string, error) {
-	if !filepath.IsAbs(filename) {
-		// Make relative paths relative to current directory
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current directory: %w", err)
-		}
-		filename = filepath.Join(cwd, filename)
-	}
-
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", err)
-		}
-	}()
-
-	values := make(map[string]string)
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		// Save the validated config sheet
+		if err := manager.ConfigSheets.Save(cs); err != nil {
+			return fmt.Errorf("failed to save config sheet: %w", err)
 		}
 
-		// Parse KEY=VALUE format
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			fmt.Printf("Warning: skipping invalid line %d: %s\n", lineNum, line)
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Remove quotes if present
-		if len(value) >= 2 {
-			if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
-				(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
-				value = value[1 : len(value)-1]
+		// Add environment to project if it doesn't exist
+		if _, exists := p.Environments[envName]; !exists {
+			_, err = manager.Projects.AddEnvironment(projectName, envName)
+			if err != nil {
+				printer.Warning(fmt.Sprintf("Failed to add environment to project: %v", err))
 			}
 		}
+	} else {
+		// Create standalone config sheet
+		if envName != "" {
+			return fmt.Errorf("environment can only be specified with a project")
+		}
 
-		values[key] = value
+		// Create config sheet without validation first
+		cs = entities.NewConfigSheet(sheetName, description, schemaRef, values)
+
+		// Validate using manager's validator
+		validator := manager.GetValidator()
+		if err := validator.ValidateConfigSheet(cs); err != nil {
+			return fmt.Errorf("config sheet validation failed: %w", err)
+		}
+
+		// Save the validated config sheet
+		if err := manager.ConfigSheets.Save(cs); err != nil {
+			return fmt.Errorf("failed to save config sheet: %w", err)
+		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
-	}
-
-	return values, nil
+	printer.Success(fmt.Sprintf("Successfully created config sheet '%s'", sheetName))
+	return printer.PrintConfigSheet(cs)
 }
 
-// importFromJSONFile imports key-value pairs from a JSON file
-func (sc *SheetCommand) importFromJSONFile(filename string) (map[string]string, error) {
-	if !filepath.IsAbs(filename) {
-		// Make relative paths relative to current directory
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current directory: %w", err)
-		}
-		filename = filepath.Join(cwd, filename)
-	}
-
+func (c *SheetCommand) importValuesFromFile(filename string) (map[string]string, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Try to parse as map[string]string first
-	var stringMap map[string]string
-	if err := json.Unmarshal(data, &stringMap); err == nil {
-		return stringMap, nil
-	}
-
-	// If that fails, try map[string]interface{} and convert
-	var interfaceMap map[string]interface{}
-	if err := json.Unmarshal(data, &interfaceMap); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
-	}
-
 	values := make(map[string]string)
-	for key, value := range interfaceMap {
-		// Convert all values to strings
-		values[key] = fmt.Sprintf("%v", value)
+
+	// Try YAML first, then JSON
+	if err := yaml.Unmarshal(data, &values); err != nil {
+		if err := json.Unmarshal(data, &values); err != nil {
+			return nil, fmt.Errorf("file is neither valid YAML nor JSON")
+		}
 	}
 
 	return values, nil
 }
 
-// collectValuesInteractively collects values from user input
-func (sc *SheetCommand) collectValuesInteractively(
-	schemaRef schema.SchemaReference,
-	existing map[string]string,
-	uuidStorage *storage.UUIDStorage,
-) (map[string]string, error) {
-	values := make(map[string]string)
-
-	// Copy existing values
-	for k, v := range existing {
-		values[k] = v
+func (c *SheetCommand) runShow(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	fmt.Println("\n📝 Interactive configuration sheet creation")
-	fmt.Println("Enter values for environment variables. Press Enter with empty value to skip.")
-	fmt.Println()
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
 
-	// If we have a schema reference, collect values for schema variables
-	if schemaRef.Ref != "" {
-		// Load referenced schema
-		schemaID := strings.TrimPrefix(schemaRef.Ref, "#/schemas/")
-		schemaObj, err := uuidStorage.LoadSchema(schemaID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load schema: %w", err)
-		}
-
-		for _, variable := range schemaObj.Variables {
-			if existingValue, exists := values[variable.Name]; exists {
-				fmt.Printf("%s (imported: %s): ", variable.Name, existingValue)
-			} else {
-				prompt := variable.Name
-				if variable.Default != "" {
-					prompt += fmt.Sprintf(" [default: %s]", variable.Default)
-				}
-				if variable.Required {
-					prompt += " (required)"
-				}
-				fmt.Printf("%s: ", prompt)
-			}
-
-			input, err := sc.reader.ReadString('\n')
-			if err != nil {
-				return nil, fmt.Errorf("failed to read input: %w", err)
-			}
-
-			input = strings.TrimSpace(input)
-			if input != "" {
-				values[variable.Name] = input
-			} else if variable.Default != "" && values[variable.Name] == "" {
-				values[variable.Name] = variable.Default
-			}
-		}
-	}
-
-	// Allow adding custom variables
-	fmt.Println("\nAdd custom variables (enter empty name to finish):")
-	for {
-		fmt.Print("Variable name: ")
-		name, err := sc.reader.ReadString('\n')
-		if err != nil {
-			return nil, fmt.Errorf("failed to read variable name: %w", err)
-		}
-
-		name = strings.TrimSpace(name)
-		if name == "" {
-			break
-		}
-
-		fmt.Printf("Value for %s: ", name)
-		value, err := sc.reader.ReadString('\n')
-		if err != nil {
-			return nil, fmt.Errorf("failed to read variable value: %w", err)
-		}
-
-		value = strings.TrimSpace(value)
-		values[name] = value
-	}
-
-	return values, nil
-}
-
-// runShow handles the sheet show command
-func (sc *SheetCommand) runShow(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
-
-	// Get arguments and flags
-	var sheetName string
-	if len(args) > 0 {
-		sheetName = args[0]
-	}
-
-	projectFlag, _ := cmd.Flags().GetString("project")
-	envFlag, _ := cmd.Flags().GetString("env")
-
-	// Resolve config sheet reference
-	configSheet, err := sc.resolveSheetReference(uuidStorage, sheetName, projectFlag, envFlag)
+	sheetName := args[0]
+	cs, err := manager.ConfigSheets.Get(sheetName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load config sheet: %w", err)
 	}
 
-	fmt.Printf("Config Sheet: %s\n", configSheet.Name)
-	fmt.Printf("ID: %s\n", configSheet.ID)
-	fmt.Printf("Description: %s\n", configSheet.Description)
-
-	if configSheet.Project != "" {
-		// Load project to get name
-		if summary, err := uuidStorage.GetEntitySummary("projects", configSheet.Project); err == nil {
-			fmt.Printf("Project: %s\n", summary.Name)
-		}
-	}
-
-	if configSheet.Environment != "" {
-		fmt.Printf("Environment: %s\n", configSheet.Environment)
-	}
-
-	// Show schema info
-	if configSheet.Schema.Ref != "" {
-		schemaID := strings.TrimPrefix(configSheet.Schema.Ref, "#/schemas/")
-		if summary, err := uuidStorage.GetEntitySummary("schemas", schemaID); err == nil {
-			fmt.Printf("Schema: %s\n", summary.Name)
-		}
-	} else {
-		fmt.Println("Schema: inline")
-	}
-
-	fmt.Printf("Variables (%d):\n", len(configSheet.Values))
-	fmt.Println("─────────────")
-
-	for key, value := range configSheet.Values {
-		// Mask sensitive values
-		displayValue := value
-		if sc.isSensitiveKey(key) {
-			displayValue = "***masked***"
-		}
-		fmt.Printf("  %s = %s\n", key, displayValue)
-	}
-
-	return nil
+	return printer.PrintConfigSheet(cs)
 }
 
-// runList handles the sheet list command
-func (sc *SheetCommand) runList(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+func (c *SheetCommand) runList(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	projectFilter, _ := cmd.Flags().GetString("project")
-	standaloneOnly, _ := cmd.Flags().GetBool("standalone")
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
 
-	// Build filter
-	var filter *schema.ConfigSheetFilter
-	if projectFilter != "" || standaloneOnly {
-		filter = &schema.ConfigSheetFilter{
-			StandaloneOnly: standaloneOnly,
+	// Build filters
+	filters := make(map[string]string)
+	if projectName, _ := cmd.Flags().GetString("project"); projectName != "" {
+		// Resolve project name to UUID
+		p, err := manager.Projects.Get(projectName)
+		if err != nil {
+			return fmt.Errorf("project '%s' not found: %w", projectName, err)
 		}
-		if projectFilter != "" {
-			// Resolve project name to UUID
-			project, err := uuidStorage.LoadProject(projectFilter)
-			if err != nil {
-				return fmt.Errorf("failed to load project '%s': %w", projectFilter, err)
-			}
-			filter.ProjectGUID = project.ID
-		}
+		filters["project"] = p.ID
 	}
 
-	sheets, err := uuidStorage.ListConfigSheets(filter)
+	if envName, _ := cmd.Flags().GetString("environment"); envName != "" {
+		filters["environment"] = envName
+	}
+
+	if standalone, _ := cmd.Flags().GetBool("standalone"); standalone {
+		filters["standalone"] = "true"
+	}
+
+	summaries, err := manager.ConfigSheets.ListWithFilters(filters)
 	if err != nil {
 		return fmt.Errorf("failed to list config sheets: %w", err)
 	}
 
-	fmt.Println("Configuration Sheets:")
-	fmt.Println("────────────────────")
-
-	if len(sheets) == 0 {
-		fmt.Println("No configuration sheets found")
-		return nil
-	}
-
-	for _, sheet := range sheets {
-		status := "standalone"
-		if sheet.ProjectGUID != "" {
-			if summary, err := uuidStorage.GetEntitySummary("projects", sheet.ProjectGUID); err == nil {
-				status = fmt.Sprintf("project: %s", summary.Name)
-			}
-		}
-		fmt.Printf("• %s (%s)\n", sheet.Name, status)
-	}
-
-	return nil
+	return printer.PrintConfigSheetList(summaries)
 }
 
-// resolveSheetReference resolves a sheet reference from either name or project/environment
-func (sc *SheetCommand) resolveSheetReference(
-	uuidStorage *storage.UUIDStorage,
-	sheetName, projectFlag, envFlag string,
-) (*schema.ConfigSheet, error) {
-	// If environment flag is provided, resolve by project/environment
-	if envFlag != "" {
-		var project *schema.Project
-		var err error
-
-		if projectFlag != "" {
-			// Use specified project
-			project, err = uuidStorage.LoadProject(projectFlag)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load project '%s': %w", projectFlag, err)
-			}
-		} else {
-			// Try to detect project from .ee file
-			if !EasyEnvFileExists("") {
-				return nil, fmt.Errorf(
-					"no .ee file found and no --project specified. " +
-						"Either specify --project or run from project directory")
-			}
-
-			menvFile, err := LoadEasyEnvFile("")
-			if err != nil {
-				return nil, fmt.Errorf("failed to load .ee file: %w", err)
-			}
-
-			if menvFile.Project == "" {
-				return nil, fmt.Errorf(".ee file found but no project ID specified")
-			}
-
-			project, err = uuidStorage.LoadProject(menvFile.Project)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load project from .ee file: %w", err)
-			}
-		}
-
-		// Check if environment exists in project
-		envInfo, exists := project.Environments[envFlag]
-		if !exists {
-			available := make([]string, 0, len(project.Environments))
-			for env := range project.Environments {
-				available = append(available, env)
-			}
-			if len(available) > 0 {
-				return nil, fmt.Errorf("environment '%s' not found in project '%s'. Available: %s",
-					envFlag, project.Name, strings.Join(available, ", "))
-			} else {
-				return nil, fmt.Errorf("environment '%s' not found in project '%s'. No environments configured",
-					envFlag, project.Name)
-			}
-		}
-
-		// Load the config sheet using naming convention
-		configSheetName := project.GetConfigSheetName(envInfo.Name)
-		configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to load config sheet '%s' for environment '%s': %w",
-				configSheetName,
-				envFlag,
-				err,
-			)
-		}
-
-		return configSheet, nil
-	}
-
-	// If sheet name is provided, load directly
-	if sheetName != "" {
-		configSheet, err := uuidStorage.LoadConfigSheet(sheetName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load config sheet '%s': %w", sheetName, err)
-		}
-		return configSheet, nil
-	}
-
-	return nil, fmt.Errorf("either sheet name or --env flag must be provided")
-}
-
-// runExport handles the sheet export command
-func (sc *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
-
-	// Get arguments and flags
-	var sheetName string
-	if len(args) > 0 {
-		sheetName = args[0]
+func (c *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
 	format, _ := cmd.Flags().GetString("format")
-	output, _ := cmd.Flags().GetString("output")
-	noComments, _ := cmd.Flags().GetBool("no-comments")
-	projectFlag, _ := cmd.Flags().GetString("project")
-	envFlag, _ := cmd.Flags().GetString("env")
+	printer := output.NewPrinter(output.FormatTable, false)
 
-	// Validate format
-	validFormats := map[string]bool{
-		"dotenv": true,
-		"bash":   true,
-		"json":   true,
-		"yaml":   true,
-	}
-	if !validFormats[format] {
-		return fmt.Errorf(
-			"invalid format '%s'. Supported formats: dotenv, bash, json, yaml",
-			format,
-		)
-	}
-
-	// Resolve config sheet reference
-	configSheet, err := sc.resolveSheetReference(uuidStorage, sheetName, projectFlag, envFlag)
+	sheetName := args[0]
+	cs, err := manager.ConfigSheets.Get(sheetName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load config sheet: %w", err)
 	}
 
-	// Generate export content
-	content, err := sc.generateExport(configSheet, format, !noComments)
-	if err != nil {
-		return fmt.Errorf("failed to generate export: %w", err)
-	}
-
-	// Output to file or stdout
-	if output != "" {
-		if err := os.WriteFile(output, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("failed to write to file '%s': %w", output, err)
-		}
-		fmt.Printf("✅ Exported %s to %s (%s format)\n", sheetName, output, format)
-	} else {
-		fmt.Print(content)
-	}
-
-	return nil
-}
-
-// generateExport generates the export content in the specified format
-func (sc *SheetCommand) generateExport(
-	configSheet *schema.ConfigSheet,
-	format string,
-	includeComments bool,
-) (string, error) {
 	switch format {
+	case "env":
+		return printer.PrintEnvironmentExport(cs.Values)
 	case "dotenv":
-		return sc.generateDotEnv(configSheet, includeComments), nil
-	case "bash":
-		return sc.generateBashScript(configSheet, includeComments), nil
+		return printer.PrintDotEnv(cs.Values)
 	case "json":
-		return sc.generateJSON(configSheet, includeComments)
-	case "yaml":
-		return sc.generateYAML(configSheet, includeComments)
+		return printer.PrintValues(cs.Values)
 	default:
-		return "", fmt.Errorf("unsupported format: %s", format)
+		return fmt.Errorf("unsupported export format: %s", format)
 	}
 }
 
-// generateDotEnv generates .env format output
-func (sc *SheetCommand) generateDotEnv(
-	configSheet *schema.ConfigSheet,
-	includeComments bool,
-) string {
-	var result strings.Builder
-
-	if includeComments {
-		result.WriteString("# Configuration exported from ee\n")
-		result.WriteString(fmt.Sprintf("# Sheet: %s\n", configSheet.Name))
-		if configSheet.Description != "" {
-			result.WriteString(fmt.Sprintf("# Description: %s\n", configSheet.Description))
-		}
-		result.WriteString(
-			fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")),
-		)
+func (c *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	for key, value := range configSheet.Values {
-		// Escape value if it contains spaces or special characters
-		if strings.ContainsAny(value, " \t\n\"'$") {
-			value = fmt.Sprintf("\"%s\"", strings.ReplaceAll(value, "\"", "\\\""))
-		}
-		result.WriteString(fmt.Sprintf("%s=%s\n", key, value))
-	}
-
-	return result.String()
-}
-
-// generateBashScript generates bash export script
-func (sc *SheetCommand) generateBashScript(
-	configSheet *schema.ConfigSheet,
-	includeComments bool,
-) string {
-	var result strings.Builder
-
-	result.WriteString("#!/bin/bash\n")
-	if includeComments {
-		result.WriteString("# Configuration export script generated by ee\n")
-		result.WriteString(fmt.Sprintf("# Sheet: %s\n", configSheet.Name))
-		if configSheet.Description != "" {
-			result.WriteString(fmt.Sprintf("# Description: %s\n", configSheet.Description))
-		}
-		result.WriteString(
-			fmt.Sprintf("# Generated: %s\n\n", configSheet.UpdatedAt.Format("2006-01-02 15:04:05")),
-		)
-		result.WriteString("# Run with: source <(ee sheet export sheet-name --format bash)\n")
-		result.WriteString(
-			"# Or save to file: ee sheet export sheet-name --format bash --output export.sh\n\n",
-		)
-	}
-
-	for key, value := range configSheet.Values {
-		// Properly escape value for shell
-		escapedValue := strings.ReplaceAll(value, "'", "'\"'\"'")
-		result.WriteString(fmt.Sprintf("export %s='%s'\n", key, escapedValue))
-	}
-
-	if includeComments {
-		result.WriteString("\necho \"Environment variables exported successfully\"\n")
-	}
-
-	return result.String()
-}
-
-// generateJSON generates JSON format output
-func (sc *SheetCommand) generateJSON(
-	configSheet *schema.ConfigSheet,
-	includeComments bool,
-) (string, error) {
-	if includeComments {
-		// JSON with metadata
-		export := map[string]interface{}{
-			"_meta": map[string]interface{}{
-				"sheet":       configSheet.Name,
-				"description": configSheet.Description,
-				"generated":   configSheet.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-				"format":      "ee-export-v1",
-			},
-			"variables": configSheet.Values,
-		}
-		data, err := json.MarshalIndent(export, "", "  ")
-		return string(data), err
-	} else {
-		// Simple JSON object
-		data, err := json.MarshalIndent(configSheet.Values, "", "  ")
-		return string(data), err
-	}
-}
-
-// generateYAML generates YAML format output
-func (sc *SheetCommand) generateYAML(
-	configSheet *schema.ConfigSheet,
-	includeComments bool,
-) (string, error) {
-	if includeComments {
-		// YAML with metadata
-		export := map[string]interface{}{
-			"_meta": map[string]interface{}{
-				"sheet":       configSheet.Name,
-				"description": configSheet.Description,
-				"generated":   configSheet.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-				"format":      "ee-export-v1",
-			},
-			"variables": configSheet.Values,
-		}
-		data, err := yaml.Marshal(export)
-		return string(data), err
-	} else {
-		// Simple YAML
-		data, err := yaml.Marshal(configSheet.Values)
-		return string(data), err
-	}
-}
-
-// runDelete handles the sheet delete command
-func (sc *SheetCommand) runDelete(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
-
-	// Get arguments and flags
-	var sheetName string
-	if len(args) > 0 {
-		sheetName = args[0]
-	}
-
-	projectFlag, _ := cmd.Flags().GetString("project")
-	envFlag, _ := cmd.Flags().GetString("env")
-
-	// Resolve config sheet reference
-	configSheet, err := sc.resolveSheetReference(uuidStorage, sheetName, projectFlag, envFlag)
-	if err != nil {
-		return err
-	}
-
-	// If this sheet is associated with a project environment, remove it from the project
-	if configSheet.Project != "" && configSheet.Environment != "" {
-		project, err := uuidStorage.LoadProject(configSheet.Project)
-		if err == nil {
-			project.RemoveEnvironment(configSheet.Environment)
-			if err := uuidStorage.SaveProject(project); err != nil {
-				fmt.Fprintf(
-					os.Stderr,
-					"Warning: failed to update project after removing environment: %v\n",
-					err,
-				)
-			}
-		}
-	}
-
-	// Delete the sheet
-	if err := uuidStorage.DeleteEntity("sheets", configSheet.Name); err != nil {
-		return fmt.Errorf("failed to delete config sheet: %w", err)
-	}
-
-	fmt.Printf("✅ Deleted config sheet: %s\n", configSheet.Name)
-	return nil
-}
-
-// newEditCommand creates the sheet edit subcommand
-func (sc *SheetCommand) newEditCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "edit [sheet-name]",
-		Short: "Edit a configuration sheet using your preferred editor",
-		Long: `Edit a configuration sheet using your preferred editor ($EDITOR).
-
-You can edit by sheet name directly, or by specifying a project and environment.
-The sheet will be opened as JSON in your preferred editor for modification.
-
-Examples:
-  # Edit sheet by name
-  ee sheet edit my-config
-
-  # Edit environment sheet using project from .ee file
-  ee sheet edit --env development
-
-  # Edit environment sheet for specific project
-  ee sheet edit --env development --project my-project
-`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: sc.runEdit,
-	}
-
-	cmd.Flags().String("project", "", "Project name (overrides auto-detection)")
-	cmd.Flags().String("env", "", "Environment name")
-
-	return cmd
-}
-
-// runEdit handles the sheet edit command
-func (sc *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
-	}
-
-	var sheetName string
-
-	// Get flags
-	projectFlag, _ := cmd.Flags().GetString("project")
-	envFlag, _ := cmd.Flags().GetString("env")
-
-	// Resolve sheet by name or project/environment
-	if envFlag != "" {
-		// Edit by project/environment
-		projectName := projectFlag
-
-		// If no project specified, try to get from .ee file
-		if projectName == "" {
-			if !EasyEnvFileExists("") {
-				return fmt.Errorf(
-					"no project specified and no .ee file found. Use --project flag or run from project directory",
-				)
-			}
-
-			menvFile, err := LoadEasyEnvFile("")
-			if err != nil {
-				return fmt.Errorf("failed to load .ee file: %w", err)
-			}
-
-			if menvFile.Project == "" {
-				return fmt.Errorf("no project ID in .ee file")
-			}
-
-			// Load project to get name
-			project, err := uuidStorage.LoadProject(menvFile.Project)
-			if err != nil {
-				return fmt.Errorf("failed to load project: %w", err)
-			}
-			projectName = project.Name
-		}
-
-		// Find the config sheet for this project/environment
-		return fmt.Errorf(
-			"editing by project/environment not yet implemented for project '%s'. Use sheet name directly",
-			projectName,
-		)
-	} else if len(args) > 0 {
-		// Edit by sheet name
-		sheetName = args[0]
-	} else {
-		return fmt.Errorf("either sheet name or --env flag is required")
-	}
+	sheetName := args[0]
 
 	// Load the config sheet
-	configSheet, err := uuidStorage.LoadConfigSheet(sheetName)
+	cs, err := manager.ConfigSheets.Get(sheetName)
 	if err != nil {
 		return fmt.Errorf("failed to load config sheet '%s': %w", sheetName, err)
 	}
 
-	// Get editor command
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vim" // fallback
-	}
-
-	// Convert to JSON for editing
-	jsonData, err := json.MarshalIndent(configSheet, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to serialize config sheet: %w", err)
-	}
-
-	// Create temporary file
-	tmpFile, err := sc.createTempFile("sheet", jsonData)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := os.Remove(tmpFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to remove temporary file: %v\n", err)
+	validator := func(data []byte) (interface{}, error) {
+		var editedSheet entities.ConfigSheet
+		if err := json.Unmarshal(data, &editedSheet); err != nil {
+			return nil, fmt.Errorf("invalid JSON in edited file: %w", err)
 		}
-	}()
 
-	fmt.Printf("📝 Editing config sheet '%s' using %s...\n", sheetName, editor)
+		// Preserve the original ID and timestamps if they weren't changed
+		if editedSheet.ID == "" {
+			editedSheet.ID = cs.ID
+		}
+		if editedSheet.CreatedAt.IsZero() {
+			editedSheet.CreatedAt = cs.CreatedAt
+		}
 
-	// Open editor
-	if err := sc.openEditor(editor, tmpFile); err != nil {
-		return err
+		// Validate the edited sheet
+		if editedSheet.Name == "" {
+			return nil, fmt.Errorf("config sheet name cannot be empty")
+		}
+
+		return &editedSheet, nil
 	}
 
-	// Read back the edited content
-	editedData, err := os.ReadFile(tmpFile)
-	if err != nil {
-		return fmt.Errorf("failed to read edited file: %w", err)
+	saver := func(entity interface{}) error {
+		editedSheet := entity.(*entities.ConfigSheet)
+		return manager.ConfigSheets.Save(editedSheet)
 	}
 
-	// Parse the edited JSON
-	var editedSheet schema.ConfigSheet
-	if err := json.Unmarshal(editedData, &editedSheet); err != nil {
-		return fmt.Errorf("invalid JSON in edited file: %w", err)
+	changeReporter := func(original, edited interface{}) {
+		origSheet := original.(*entities.ConfigSheet)
+		editedSheet := edited.(*entities.ConfigSheet)
+
+		if origSheet.Name != editedSheet.Name {
+			fmt.Printf("  Name: %s → %s\n", origSheet.Name, editedSheet.Name)
+		}
+		if origSheet.Description != editedSheet.Description {
+			fmt.Printf("  Description updated\n")
+		}
+		if len(origSheet.Values) != len(editedSheet.Values) {
+			fmt.Printf(
+				"  Values: %d → %d\n",
+				len(origSheet.Values),
+				len(editedSheet.Values),
+			)
+		}
 	}
 
-	// Preserve the original ID and timestamps if they weren't changed
-	if editedSheet.ID == "" {
-		editedSheet.ID = configSheet.ID
-	}
-	if editedSheet.CreatedAt.IsZero() {
-		editedSheet.CreatedAt = configSheet.CreatedAt
+	return EditEntity(
+		fmt.Sprintf("config sheet '%s'", sheetName),
+		cs,
+		&BaseEditorCommands{},
+		validator,
+		saver,
+		changeReporter,
+	)
+}
+
+func (c *SheetCommand) runDelete(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	// Validate the edited sheet
-	if editedSheet.Name == "" {
-		return fmt.Errorf("config sheet name cannot be empty")
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
+
+	sheetName := args[0]
+
+	if err := manager.ConfigSheets.Delete(sheetName); err != nil {
+		return fmt.Errorf("failed to delete config sheet: %w", err)
 	}
 
-	// Save the updated sheet
-	if err := uuidStorage.SaveConfigSheet(&editedSheet); err != nil {
-		return fmt.Errorf("failed to save config sheet: %w", err)
-	}
-
-	fmt.Printf("✅ Config sheet '%s' updated successfully\n", editedSheet.Name)
-
-	// Show what changed
-	if configSheet.Name != editedSheet.Name {
-		fmt.Printf("  Name: %s → %s\n", configSheet.Name, editedSheet.Name)
-	}
-	if len(configSheet.Values) != len(editedSheet.Values) {
-		fmt.Printf("  Values: %d → %d\n", len(configSheet.Values), len(editedSheet.Values))
-	}
-
+	printer.Success(fmt.Sprintf("Successfully deleted config sheet '%s'", sheetName))
 	return nil
 }
 
-// isSensitiveKey checks if a key likely contains sensitive information
-func (sc *SheetCommand) isSensitiveKey(key string) bool {
-	key = strings.ToLower(key)
-	sensitivePatterns := []string{
-		"password", "secret", "key", "token", "credential",
-		"api_key", "auth", "private", "cert", "ssl",
+func (c *SheetCommand) runSet(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	for _, pattern := range sensitivePatterns {
-		if strings.Contains(key, pattern) {
-			return true
-		}
-	}
-	return false
-}
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
 
-// createTempFile creates a temporary file for editing
-func (sc *SheetCommand) createTempFile(prefix string, data []byte) (string, error) {
-	tmpDir := os.TempDir()
+	sheetName := args[0]
+	varName := args[1]
+	value := args[2]
 
-	// Create temp file
-	file, err := os.CreateTemp(tmpDir, fmt.Sprintf("ee-%s-*.json", prefix))
+	_, err := manager.ConfigSheets.SetValue(sheetName, varName, value)
 	if err != nil {
-		return "", fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close temporary file: %v\n", err)
-		}
-	}()
-
-	// Write data to temp file
-	if _, err := file.Write(data); err != nil {
-		return "", fmt.Errorf("failed to write to temporary file: %w", err)
+		return fmt.Errorf("failed to set value: %w", err)
 	}
 
-	return file.Name(), nil
+	printer.Success(fmt.Sprintf("Set %s=%s in config sheet '%s'", varName, value, sheetName))
+	return nil
 }
 
-// openEditor opens the specified editor with the given file
-func (sc *SheetCommand) openEditor(editor, filename string) error {
-	// Split editor command (in case it has arguments)
-	editorParts := strings.Fields(editor)
-	if len(editorParts) == 0 {
-		return fmt.Errorf("editor command is empty")
+func (c *SheetCommand) runUnset(cmd *cobra.Command, args []string) error {
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	// Prepare command
-	editorCmd := editorParts[0]
-	cmdArgs := make([]string, len(editorParts)-1+1)
-	copy(cmdArgs, editorParts[1:])
-	cmdArgs[len(editorParts)-1] = filename
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
 
-	// Execute editor
-	cmd := exec.Command(editorCmd, cmdArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	sheetName := args[0]
+	varName := args[1]
 
-	fmt.Printf("Opening %s...\n", filename)
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("editor command failed: %w", err)
+	_, err := manager.ConfigSheets.UnsetValue(sheetName, varName)
+	if err != nil {
+		return fmt.Errorf("failed to unset value: %w", err)
 	}
 
+	printer.Success(fmt.Sprintf("Unset %s in config sheet '%s'", varName, sheetName))
 	return nil
 }

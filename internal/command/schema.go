@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/n1rna/ee-cli/internal/schema"
-	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 type SchemaCommand struct {
@@ -71,89 +71,116 @@ Examples:
 
 	cmd.Flags().String("import", "", "Import schema definition from a YAML file")
 	cmd.Flags().String("description", "", "Schema description")
-	cmd.Flags().
-		StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
+	cmd.Flags().StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+
 	return cmd
 }
 
 func (c *SchemaCommand) newShowCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "show [schema-name]",
 		Short: "Show details of a schema",
 		Args:  cobra.ExactArgs(1),
 		RunE:  c.runShow,
 	}
+
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+
+	return cmd
 }
 
 func (c *SchemaCommand) newListCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Show list of a schemas",
+		Short: "Show list of schemas",
 		Args:  cobra.ExactArgs(0),
 		RunE:  c.runList,
 	}
+
+	cmd.Flags().String("format", "table", "Output format (table, json)")
+
+	return cmd
 }
 
 func (c *SchemaCommand) newDeleteCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "delete [schema-name]",
 		Short: "Delete a schema",
 		Args:  cobra.ExactArgs(1),
 		RunE:  c.runDelete,
 	}
+
+	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+
+	return cmd
+}
+
+func (c *SchemaCommand) newEditCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "edit [schema-name]",
+		Short: "Edit a schema using your preferred editor",
+		Long: `Edit a schema using your preferred editor.
+
+The editor is determined by the $EDITOR environment variable, falling back to 'vim' if not set.
+The schema is presented as JSON for editing, and changes are validated and applied upon saving.
+
+Examples:
+  # Edit a schema
+  ee schema edit my-schema`,
+		Args: cobra.ExactArgs(1),
+		RunE: c.runEdit,
+	}
+
+	return cmd
 }
 
 func (c *SchemaCommand) runCreate(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
+
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.Format(format), quiet)
 
 	schemaName := args[0]
 
-	// Check if schema already exists
-	schemas, err := uuidStorage.ListSchemas()
-	if err != nil {
-		return fmt.Errorf("failed to list schemas: %w", err)
-	}
-
-	for _, s := range schemas {
-		if s.Name == schemaName {
-			return fmt.Errorf("schema %s already exists", schemaName)
-		}
-	}
-
 	// Check if we should import from file
 	if importFile, _ := cmd.Flags().GetString("import"); importFile != "" {
-		return c.importSchema(uuidStorage, schemaName, importFile)
+		return c.importSchema(manager, printer, schemaName, importFile)
 	}
 
 	// Check if we should create via CLI flags
 	if variables, _ := cmd.Flags().GetStringSlice("variable"); len(variables) > 0 {
 		description, _ := cmd.Flags().GetString("description")
-		return c.createSchemaFromCLI(uuidStorage, schemaName, description, variables)
+		return c.createSchemaFromCLI(manager, printer, schemaName, description, variables)
 	}
 
-	return c.createSchemaInteractively(uuidStorage, schemaName)
+	return c.createSchemaInteractively(manager, printer, schemaName)
 }
 
 func (c *SchemaCommand) createSchemaInteractively(
-	uuidStorage *storage.UUIDStorage,
+	manager *entities.Manager,
+	printer *output.Printer,
 	name string,
 ) error {
-	fmt.Println("Creating new schema...")
-	fmt.Println("For each variable, you'll need to specify:")
-	fmt.Println("- Name (e.g., DATABASE_URL)")
-	fmt.Println("- Type (string/number/boolean/url)")
-	fmt.Println("- Regex pattern (optional)")
-	fmt.Println("- Default value (optional)")
-	fmt.Println("- Required flag (y/n)")
-	fmt.Println()
+	printer.Info("Creating new schema...")
+	printer.Info("For each variable, you'll need to specify:")
+	printer.Info("- Name (e.g., DATABASE_URL)")
+	printer.Info("- Type (string/number/boolean/url)")
+	printer.Info("- Regex pattern (optional)")
+	printer.Info("- Default value (optional)")
+	printer.Info("- Required flag (y/n)")
 
-	schemaObj := schema.NewSchema(name, "Schema created interactively", []schema.Variable{}, nil)
+	var variables []entities.Variable
 
 	for {
-		var variable schema.Variable
+		var variable entities.Variable
 
 		fmt.Print("Enter variable name (or empty to finish): ")
 		name, err := c.reader.ReadString('\n')
@@ -167,9 +194,9 @@ func (c *SchemaCommand) createSchemaInteractively(
 		}
 
 		// Check for duplicate variable names
-		for _, v := range schemaObj.Variables {
+		for _, v := range variables {
 			if v.Name == name {
-				fmt.Printf("Variable %s already exists in schema\n", name)
+				printer.Warning(fmt.Sprintf("Variable %s already exists in schema", name))
 				continue
 			}
 		}
@@ -187,7 +214,7 @@ func (c *SchemaCommand) createSchemaInteractively(
 		case "string", "number", "boolean", "url":
 			variable.Type = varType
 		default:
-			fmt.Printf("Invalid type %s, defaulting to string\n", varType)
+			printer.Warning(fmt.Sprintf("Invalid type %s, defaulting to string", varType))
 			variable.Type = "string"
 		}
 
@@ -222,38 +249,33 @@ func (c *SchemaCommand) createSchemaInteractively(
 		required = strings.TrimSpace(strings.ToLower(required))
 		variable.Required = required == "y" || required == "yes"
 
-		schemaObj.Variables = append(schemaObj.Variables, variable)
-		fmt.Println()
+		variables = append(variables, variable)
 	}
 
-	if len(schemaObj.Variables) == 0 {
+	if len(variables) == 0 {
 		return fmt.Errorf("schema must contain at least one variable")
 	}
 
-	// TODO: Implement validation for UUID storage if needed
-
-	// Save schema
-	if err := uuidStorage.SaveSchema(schemaObj); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
+	// Create schema using the manager
+	s, err := manager.Schemas.Create(name, "Schema created interactively", variables, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	fmt.Printf(
-		"Successfully created schema '%s' with %d variables\n",
-		name,
-		len(schemaObj.Variables),
-	)
-	return nil
+	printer.Success(fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)))
+	return printer.PrintSchema(s)
 }
 
 // createSchemaFromCLI creates a schema from CLI flags
 func (c *SchemaCommand) createSchemaFromCLI(
-	uuidStorage *storage.UUIDStorage,
+	manager *entities.Manager,
+	printer *output.Printer,
 	name, description string,
 	variableSpecs []string,
 ) error {
-	fmt.Printf("Creating schema '%s' from CLI specifications...\n", name)
+	printer.Info(fmt.Sprintf("Creating schema '%s' from CLI specifications...", name))
 
-	variables := []schema.Variable{}
+	variables := []entities.Variable{}
 
 	// Parse each variable specification
 	for _, varSpec := range variableSpecs {
@@ -270,31 +292,29 @@ func (c *SchemaCommand) createSchemaFromCLI(
 		}
 
 		variables = append(variables, variable)
-		fmt.Printf("  ✓ Added variable: %s (%s)\n", variable.Name, variable.Type)
+		printer.Info(fmt.Sprintf("Added variable: %s (%s)", variable.Name, variable.Type))
 	}
 
 	if len(variables) == 0 {
 		return fmt.Errorf("schema must contain at least one variable")
 	}
 
-	// Create schema object
-	schemaObj := schema.NewSchema(name, description, variables, nil)
-
-	// Save schema
-	if err := uuidStorage.SaveSchema(schemaObj); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
+	// Create schema using the manager
+	s, err := manager.Schemas.Create(name, description, variables, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	fmt.Printf("✅ Successfully created schema '%s' with %d variables\n", name, len(variables))
-	return nil
+	printer.Success(fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)))
+	return printer.PrintSchema(s)
 }
 
 // parseVariableSpec parses a variable specification in the format: name:type:title:required[:default]
-func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) {
+func (c *SchemaCommand) parseVariableSpec(spec string) (entities.Variable, error) {
 	// Split into at most 5 parts to handle cases where default values contain colons
 	parts := strings.SplitN(spec, ":", 5)
 	if len(parts) < 4 {
-		return schema.Variable{}, fmt.Errorf(
+		return entities.Variable{}, fmt.Errorf(
 			"format should be 'name:type:title:required[:default]', got %d parts",
 			len(parts),
 		)
@@ -307,13 +327,13 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 
 	// Validate name
 	if name == "" {
-		return schema.Variable{}, fmt.Errorf("variable name cannot be empty")
+		return entities.Variable{}, fmt.Errorf("variable name cannot be empty")
 	}
 
 	// Validate type
 	validTypes := map[string]bool{"string": true, "number": true, "boolean": true, "url": true}
 	if !validTypes[varType] {
-		return schema.Variable{}, fmt.Errorf(
+		return entities.Variable{}, fmt.Errorf(
 			"invalid type '%s', must be one of: string, number, boolean, url",
 			varType,
 		)
@@ -327,7 +347,7 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 	case "false", "f", "0", "no", "n":
 		required = false
 	default:
-		return schema.Variable{}, fmt.Errorf(
+		return entities.Variable{}, fmt.Errorf(
 			"invalid required value '%s', must be true/false",
 			requiredStr,
 		)
@@ -339,7 +359,7 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 		defaultValue = strings.TrimSpace(parts[4])
 	}
 
-	return schema.Variable{
+	return entities.Variable{
 		Name:     name,
 		Type:     varType,
 		Title:    title,
@@ -349,7 +369,8 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (schema.Variable, error) 
 }
 
 func (c *SchemaCommand) importSchema(
-	uuidStorage *storage.UUIDStorage,
+	manager *entities.Manager,
+	printer *output.Printer,
 	name string,
 	filename string,
 ) error {
@@ -358,181 +379,110 @@ func (c *SchemaCommand) importSchema(
 		return fmt.Errorf("failed to read import file: %w", err)
 	}
 
-	var schemaObj schema.Schema
+	var schemaObj entities.Schema
 	if err := yaml.Unmarshal(data, &schemaObj); err != nil {
 		return fmt.Errorf("failed to parse schema file: %w", err)
 	}
 
-	// Convert to new schema format
-	newSchema := schema.NewSchema(
-		name,
-		schemaObj.Description,
-		schemaObj.Variables,
-		schemaObj.Extends,
-	)
-	// TODO: Implement validation for UUID storage if needed
-
-	// Save schema
-	if err := uuidStorage.SaveSchema(newSchema); err != nil {
-		return fmt.Errorf("failed to save schema: %w", err)
+	// Create schema using the manager
+	s, err := manager.Schemas.Create(name, schemaObj.Description, schemaObj.Variables, schemaObj.Extends)
+	if err != nil {
+		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	fmt.Printf(
-		"Successfully imported schema '%s' with %d variables\n",
-		name,
-		len(newSchema.Variables),
-	)
-	return nil
+	printer.Success(fmt.Sprintf("Successfully imported schema '%s' with %d variables", name, len(s.Variables)))
+	return printer.PrintSchema(s)
 }
 
 func (c *SchemaCommand) runShow(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
+
 	schemaName := args[0]
-	schemaObj, err := uuidStorage.LoadSchema(schemaName)
+	s, err := manager.Schemas.Get(schemaName)
 	if err != nil {
 		return fmt.Errorf("failed to load schema: %w", err)
 	}
 
-	fmt.Printf("Schema: %s\n", schemaObj.Name)
-	fmt.Println("Variables:")
-	fmt.Println("─────────")
-
-	for _, v := range schemaObj.Variables {
-		fmt.Printf("• %s\n", v.Name)
-		fmt.Printf("  Type: %s\n", v.Type)
-		if v.Regex != "" {
-			fmt.Printf("  Pattern: %s\n", v.Regex)
-		}
-		if v.Default != "" {
-			fmt.Printf("  Default: %s\n", v.Default)
-		}
-		fmt.Printf("  Required: %v\n", v.Required)
-		fmt.Println()
-	}
-
-	return nil
+	return printer.PrintSchema(s)
 }
 
 func (c *SchemaCommand) runList(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
-	schemas, err := uuidStorage.ListSchemas()
+	// Set up printer
+	format, _ := cmd.Flags().GetString("format")
+	printer := output.NewPrinter(output.Format(format), false)
+
+	summaries, err := manager.Schemas.List()
 	if err != nil {
 		return fmt.Errorf("failed to list schemas: %w", err)
 	}
 
-	fmt.Println("Schemas:")
-	fmt.Println("────────")
-
-	for _, s := range schemas {
-		fmt.Println(s.Name)
-	}
-
-	return nil
+	return printer.PrintSchemaList(summaries)
 }
 
 func (c *SchemaCommand) runDelete(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
+
+	// Set up printer
+	quiet, _ := cmd.Flags().GetBool("quiet")
+	printer := output.NewPrinter(output.FormatTable, quiet)
 
 	schemaName := args[0]
 
-	// Check if schema is in use by any projects
-	projects, err := uuidStorage.ListProjects()
-	if err != nil {
-		return fmt.Errorf("failed to list projects: %w", err)
-	}
+	// TODO: Add dependency checking - see if schema is in use by projects/config sheets
 
-	for _, project := range projects {
-		// Load project to check its environments
-		projectObj, err := uuidStorage.LoadProject(project.Name)
-		if err != nil {
-			continue
-		}
-
-		for envName, envInfo := range projectObj.Environments {
-			configSheetName := projectObj.GetConfigSheetName(envInfo.Name)
-			configSheet, err := uuidStorage.LoadConfigSheet(configSheetName)
-			if err != nil {
-				continue
-			}
-
-			// Check if this schema is referenced
-			if configSheet.Schema.Ref != "" {
-				if schemaID := strings.TrimPrefix(configSheet.Schema.Ref, "#/schemas/"); schemaID != configSheet.Schema.Ref {
-					if summary, err := uuidStorage.GetEntitySummary("schemas", schemaID); err == nil &&
-						summary.Name == schemaName {
-						return fmt.Errorf(
-							"cannot delete schema: in use by project %s (environment: %s)",
-							project.Name,
-							envName,
-						)
-					}
-				}
-			}
-		}
-	}
-
-	if err := uuidStorage.DeleteSchema(schemaName); err != nil {
+	if err := manager.Schemas.Delete(schemaName); err != nil {
 		return fmt.Errorf("failed to delete schema: %w", err)
 	}
 
-	fmt.Printf("Successfully deleted schema '%s'\n", schemaName)
+	printer.Success(fmt.Sprintf("Successfully deleted schema '%s'", schemaName))
 	return nil
 }
 
-func (c *SchemaCommand) newEditCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "edit [schema-name]",
-		Short: "Edit a schema using your preferred editor",
-		Long: `Edit a schema using your preferred editor.
-
-The editor is determined by the $EDITOR environment variable, falling back to 'vim' if not set.
-The schema is presented as JSON for editing, and changes are validated and applied upon saving.
-
-Examples:
-  # Edit a schema
-  ee schema edit my-schema`,
-		Args: cobra.ExactArgs(1),
-		RunE: c.runEdit,
-	}
-}
-
 func (c *SchemaCommand) runEdit(cmd *cobra.Command, args []string) error {
-	uuidStorage := GetStorage(cmd.Context())
-	if uuidStorage == nil {
-		return fmt.Errorf("storage not initialized")
+	// Get manager from context
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		return fmt.Errorf("entity manager not initialized")
 	}
 
 	schemaName := args[0]
 
 	// Load the schema
-	schemaObj, err := uuidStorage.LoadSchema(schemaName)
+	s, err := manager.Schemas.Get(schemaName)
 	if err != nil {
 		return fmt.Errorf("failed to load schema '%s': %w", schemaName, err)
 	}
 
 	validator := func(data []byte) (interface{}, error) {
-		var editedSchema schema.Schema
+		var editedSchema entities.Schema
 		if err := json.Unmarshal(data, &editedSchema); err != nil {
 			return nil, fmt.Errorf("invalid JSON in edited file: %w", err)
 		}
 
 		// Preserve the original ID and timestamps if they weren't changed
 		if editedSchema.ID == "" {
-			editedSchema.ID = schemaObj.ID
+			editedSchema.ID = s.ID
 		}
 		if editedSchema.CreatedAt.IsZero() {
-			editedSchema.CreatedAt = schemaObj.CreatedAt
+			editedSchema.CreatedAt = s.CreatedAt
 		}
 
 		// Validate the edited schema
@@ -544,13 +494,13 @@ func (c *SchemaCommand) runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	saver := func(entity interface{}) error {
-		editedSchema := entity.(*schema.Schema)
-		return uuidStorage.SaveSchema(editedSchema)
+		editedSchema := entity.(*entities.Schema)
+		return manager.Schemas.Save(editedSchema)
 	}
 
 	changeReporter := func(original, edited interface{}) {
-		origSchema := original.(*schema.Schema)
-		editedSchema := edited.(*schema.Schema)
+		origSchema := original.(*entities.Schema)
+		editedSchema := edited.(*entities.Schema)
 
 		if origSchema.Name != editedSchema.Name {
 			fmt.Printf("  Name: %s → %s\n", origSchema.Name, editedSchema.Name)
@@ -569,7 +519,7 @@ func (c *SchemaCommand) runEdit(cmd *cobra.Command, args []string) error {
 
 	return EditEntity(
 		fmt.Sprintf("schema '%s'", schemaName),
-		schemaObj,
+		s,
 		&BaseEditorCommands{},
 		validator,
 		saver,

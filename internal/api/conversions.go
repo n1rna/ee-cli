@@ -4,17 +4,17 @@ package api
 import (
 	"time"
 
-	"github.com/n1rna/ee-cli/internal/schema"
+	"github.com/n1rna/ee-cli/internal/entities"
 )
 
-// ConvertSchemaFromAPI converts API Schema to local schema.Schema
-func ConvertSchemaFromAPI(apiSchema *Schema) *schema.Schema {
+// ConvertSchemaFromAPI converts API Schema to local entities.Schema
+func ConvertSchemaFromAPI(apiSchema *Schema) *entities.Schema {
 	if apiSchema == nil {
 		return nil
 	}
 
-	localSchema := &schema.Schema{
-		Entity: schema.Entity{
+	localSchema := &entities.Schema{
+		Entity: entities.Entity{
 			ID:          apiSchema.GUID, // Use GUID as ID for local storage
 			Name:        apiSchema.Name,
 			Description: apiSchema.Description,
@@ -23,13 +23,13 @@ func ConvertSchemaFromAPI(apiSchema *Schema) *schema.Schema {
 			CreatedAt:   apiSchema.CreatedAt.Time(),
 			UpdatedAt:   apiSchema.UpdatedAt.Time(),
 		},
-		Variables: make([]schema.Variable, len(apiSchema.Variables)),
+		Variables: make([]entities.Variable, len(apiSchema.Variables)),
 		Extends:   apiSchema.Extends,
 	}
 
 	// Convert variables
 	for i, apiVar := range apiSchema.Variables {
-		localSchema.Variables[i] = schema.Variable{
+		localSchema.Variables[i] = entities.Variable{
 			Name:     apiVar.Name,
 			Type:     apiVar.Type,
 			Regex:    apiVar.Regex,
@@ -41,8 +41,8 @@ func ConvertSchemaFromAPI(apiSchema *Schema) *schema.Schema {
 	return localSchema
 }
 
-// ConvertSchemaToAPI converts local schema.Schema to API Schema
-func ConvertSchemaToAPI(localSchema *schema.Schema) *Schema {
+// ConvertSchemaToAPI converts local entities.Schema to API Schema
+func ConvertSchemaToAPI(localSchema *entities.Schema) *Schema {
 	if localSchema == nil {
 		return nil
 	}
@@ -70,14 +70,14 @@ func ConvertSchemaToAPI(localSchema *schema.Schema) *Schema {
 	return apiSchema
 }
 
-// ConvertProjectFromAPI converts API Project to local schema.Project
-func ConvertProjectFromAPI(apiProject *Project) *schema.Project {
+// ConvertProjectFromAPI converts API Project to local entities.Project
+func ConvertProjectFromAPI(apiProject *Project) *entities.Project {
 	if apiProject == nil {
 		return nil
 	}
 
-	localProject := &schema.Project{
-		Entity: schema.Entity{
+	localProject := &entities.Project{
+		Entity: entities.Entity{
 			ID:          apiProject.GUID, // Use GUID as ID for local storage
 			Name:        apiProject.Name,
 			Description: apiProject.Description,
@@ -86,7 +86,7 @@ func ConvertProjectFromAPI(apiProject *Project) *schema.Project {
 			CreatedAt:   apiProject.CreatedAt.Time(),
 			UpdatedAt:   apiProject.UpdatedAt.Time(),
 		},
-		Environments: make(map[string]schema.Environment), // Will be populated separately
+		Environments: make(map[string]entities.Environment), // Will be populated separately
 	}
 
 	// Schema will be resolved separately if needed
@@ -98,8 +98,8 @@ func ConvertProjectFromAPI(apiProject *Project) *schema.Project {
 	return localProject
 }
 
-// ConvertProjectToAPI converts local schema.Project to API Project
-func ConvertProjectToAPI(localProject *schema.Project) *Project {
+// ConvertProjectToAPI converts local entities.Project to API Project
+func ConvertProjectToAPI(localProject *entities.Project) *Project {
 	if localProject == nil {
 		return nil
 	}
@@ -118,14 +118,14 @@ func ConvertProjectToAPI(localProject *schema.Project) *Project {
 	return apiProject
 }
 
-// ConvertConfigSheetFromAPI converts API ConfigSheet to local schema.ConfigSheet
-func ConvertConfigSheetFromAPI(apiConfigSheet *ConfigSheet) *schema.ConfigSheet {
+// ConvertConfigSheetFromAPI converts API ConfigSheet to local entities.ConfigSheet
+func ConvertConfigSheetFromAPI(apiConfigSheet *ConfigSheet) *entities.ConfigSheet {
 	if apiConfigSheet == nil {
 		return nil
 	}
 
-	localConfigSheet := &schema.ConfigSheet{
-		Entity: schema.Entity{
+	localConfigSheet := &entities.ConfigSheet{
+		Entity: entities.Entity{
 			ID:          apiConfigSheet.GUID, // Use GUID as ID for local storage
 			Name:        apiConfigSheet.Name,
 			Description: apiConfigSheet.Description,
@@ -137,15 +137,15 @@ func ConvertConfigSheetFromAPI(apiConfigSheet *ConfigSheet) *schema.ConfigSheet 
 		Values:  apiConfigSheet.Variables, // API uses 'variables', local uses 'values'
 		Extends: apiConfigSheet.Extends,
 		// Schema will need to be set by caller based on schema reference
-		Schema: schema.SchemaReference{}, // Empty for now
+		Schema: entities.SchemaReference{}, // Empty for now
 	}
 
 	return localConfigSheet
 }
 
-// ConvertConfigSheetToAPI converts local schema.ConfigSheet to API ConfigSheet
+// ConvertConfigSheetToAPI converts local entities.ConfigSheet to API ConfigSheet
 func ConvertConfigSheetToAPI(
-	localConfigSheet *schema.ConfigSheet,
+	localConfigSheet *entities.ConfigSheet,
 	projectGUID, schemaGUID string,
 ) *ConfigSheet {
 	if localConfigSheet == nil {

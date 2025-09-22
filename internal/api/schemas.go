@@ -103,3 +103,15 @@ func (c *Client) DeleteSchema(guid string) error {
 
 	return c.parseResponse(resp, nil)
 }
+
+// PushSchema creates or updates a schema based on whether it exists remotely
+func (c *Client) PushSchema(schema *Schema) (*Schema, error) {
+	// First try to get existing schema by GUID
+	if existingSchema, err := c.GetSchema(schema.GUID); err == nil {
+		// Schema exists, update it
+		return c.UpdateSchema(existingSchema.GUID, schema)
+	}
+
+	// Schema doesn't exist, create it
+	return c.CreateSchema(schema)
+}
