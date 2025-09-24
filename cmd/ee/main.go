@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	version     = "dev"
+	version     = "0.3.0"
 	cfgBaseDir  string
 	globalFlags = struct {
 		debug bool
@@ -92,7 +92,7 @@ func main() {
 	)
 
 	// Enable version flag
-	rootCmd.SetVersionTemplate("ee version {{.Version}}\n")
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 
 	// Execute
 	if err := rootCmd.Execute(); err != nil {
