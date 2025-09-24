@@ -26,7 +26,11 @@ func NewSchemaManager(cfg *config.Config) (*SchemaManager, error) {
 }
 
 // Create creates a new schema
-func (sm *SchemaManager) Create(name, description string, variables []Variable, extends []string) (*Schema, error) {
+func (sm *SchemaManager) Create(
+	name, description string,
+	variables []Variable,
+	extends []string,
+) (*Schema, error) {
 	// Check if schema with same name already exists
 	if _, err := sm.GetByName(name); err == nil {
 		return nil, fmt.Errorf("schema with name '%s' already exists", name)
@@ -132,4 +136,3 @@ func (sm *SchemaManager) Update(nameOrUUID string, updater func(*Schema) error) 
 
 	return s, nil
 }
-

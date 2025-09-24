@@ -50,29 +50,34 @@ func NewPrinterWithWriter(writer io.Writer, format Format, quiet bool) *Printer 
 	}
 }
 
+// printf is a helper that handles fmt.Fprintf errors
+func (p *Printer) printf(format string, args ...interface{}) {
+	_, _ = fmt.Fprintf(p.writer, format, args...)
+}
+
 // Success prints a success message
 func (p *Printer) Success(message string) {
 	if !p.quiet {
-		fmt.Fprintf(p.writer, "✓ %s\n", message)
+		p.printf("✓ %s\n", message)
 	}
 }
 
 // Error prints an error message
 func (p *Printer) Error(message string) {
-	fmt.Fprintf(p.writer, "✗ %s\n", message)
+	p.printf("✗ %s\n", message)
 }
 
 // Warning prints a warning message
 func (p *Printer) Warning(message string) {
 	if !p.quiet {
-		fmt.Fprintf(p.writer, "⚠ %s\n", message)
+		p.printf("⚠ %s\n", message)
 	}
 }
 
 // Info prints an informational message
 func (p *Printer) Info(message string) {
 	if !p.quiet {
-		fmt.Fprintf(p.writer, "ℹ %s\n", message)
+		p.printf("ℹ %s\n", message)
 	}
 }
 
@@ -162,27 +167,27 @@ func (p *Printer) PrintValues(values map[string]string) error {
 
 // printSchemaTable prints a schema in table format
 func (p *Printer) printSchemaTable(s *entities.Schema) error {
-	fmt.Fprintf(p.writer, "Schema: %s\n", s.Name)
-	fmt.Fprintf(p.writer, "ID: %s\n", s.ID)
+	p.printf("Schema: %s\n", s.Name)
+	p.printf("ID: %s\n", s.ID)
 	if s.Description != "" {
-		fmt.Fprintf(p.writer, "Description: %s\n", s.Description)
+		p.printf("Description: %s\n", s.Description)
 	}
-	fmt.Fprintf(p.writer, "Created: %s\n", s.CreatedAt.Format(time.RFC3339))
-	fmt.Fprintf(p.writer, "Updated: %s\n", s.UpdatedAt.Format(time.RFC3339))
+	p.printf("Created: %s\n", s.CreatedAt.Format(time.RFC3339))
+	p.printf("Updated: %s\n", s.UpdatedAt.Format(time.RFC3339))
 
 	if len(s.Extends) > 0 {
-		fmt.Fprintf(p.writer, "Extends: %s\n", strings.Join(s.Extends, ", "))
+		p.printf("Extends: %s\n", strings.Join(s.Extends, ", "))
 	}
 
-	fmt.Fprintf(p.writer, "\nVariables:\n")
+	p.printf("\nVariables:\n")
 	if len(s.Variables) == 0 {
-		fmt.Fprintf(p.writer, "  No variables defined\n")
+		p.printf("  No variables defined\n")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tDEFAULT\tREGEX\n")
-	fmt.Fprintf(w, "  ----\t----\t--------\t-------\t-----\n")
+	_, _ = fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tDEFAULT\tREGEX\n")
+	_, _ = fmt.Fprintf(w, "  ----\t----\t--------\t-------\t-----\n")
 
 	for _, variable := range s.Variables {
 		required := "No"
@@ -190,7 +195,7 @@ func (p *Printer) printSchemaTable(s *entities.Schema) error {
 			required = "Yes"
 		}
 
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
 			variable.Name,
 			variable.Type,
 			required,
@@ -205,7 +210,7 @@ func (p *Printer) printSchemaTable(s *entities.Schema) error {
 // printSchemaListTable prints a list of schemas in table format
 func (p *Printer) printSchemaListTable(summaries []entities.EntitySummary) error {
 	if len(summaries) == 0 {
-		fmt.Fprintf(p.writer, "No schemas found\n")
+		p.printf("No schemas found\n")
 		return nil
 	}
 
@@ -215,8 +220,8 @@ func (p *Printer) printSchemaListTable(summaries []entities.EntitySummary) error
 	})
 
 	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	fmt.Fprintf(w, "----\t-----------\t-------\n")
+	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
+	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
 
 	for _, summary := range summaries {
 		desc := summary.Description
@@ -224,7 +229,7 @@ func (p *Printer) printSchemaListTable(summaries []entities.EntitySummary) error
 			desc = desc[:47] + "..."
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
 			summary.Name,
 			desc,
 			summary.CreatedAt.Format("2006-01-02"),
@@ -236,18 +241,18 @@ func (p *Printer) printSchemaListTable(summaries []entities.EntitySummary) error
 
 // printProjectTable prints a project in table format
 func (p *Printer) printProjectTable(proj *entities.Project) error {
-	fmt.Fprintf(p.writer, "Project: %s\n", proj.Name)
-	fmt.Fprintf(p.writer, "ID: %s\n", proj.ID)
+	p.printf("Project: %s\n", proj.Name)
+	p.printf("ID: %s\n", proj.ID)
 	if proj.Description != "" {
-		fmt.Fprintf(p.writer, "Description: %s\n", proj.Description)
+		p.printf("Description: %s\n", proj.Description)
 	}
-	fmt.Fprintf(p.writer, "Schema: %s\n", proj.Schema)
-	fmt.Fprintf(p.writer, "Created: %s\n", proj.CreatedAt.Format(time.RFC3339))
-	fmt.Fprintf(p.writer, "Updated: %s\n", proj.UpdatedAt.Format(time.RFC3339))
+	p.printf("Schema: %s\n", proj.Schema)
+	p.printf("Created: %s\n", proj.CreatedAt.Format(time.RFC3339))
+	p.printf("Updated: %s\n", proj.UpdatedAt.Format(time.RFC3339))
 
-	fmt.Fprintf(p.writer, "\nEnvironments:\n")
+	p.printf("\nEnvironments:\n")
 	if len(proj.Environments) == 0 {
-		fmt.Fprintf(p.writer, "  No environments defined\n")
+		p.printf("  No environments defined\n")
 		return nil
 	}
 
@@ -259,7 +264,7 @@ func (p *Printer) printProjectTable(proj *entities.Project) error {
 	sort.Strings(envNames)
 
 	for _, name := range envNames {
-		fmt.Fprintf(p.writer, "  - %s\n", name)
+		p.printf("  - %s\n", name)
 	}
 
 	return nil
@@ -268,7 +273,7 @@ func (p *Printer) printProjectTable(proj *entities.Project) error {
 // printProjectListTable prints a list of projects in table format
 func (p *Printer) printProjectListTable(summaries []entities.EntitySummary) error {
 	if len(summaries) == 0 {
-		fmt.Fprintf(p.writer, "No projects found\n")
+		p.printf("No projects found\n")
 		return nil
 	}
 
@@ -278,8 +283,8 @@ func (p *Printer) printProjectListTable(summaries []entities.EntitySummary) erro
 	})
 
 	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	fmt.Fprintf(w, "----\t-----------\t-------\n")
+	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
+	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
 
 	for _, summary := range summaries {
 		desc := summary.Description
@@ -287,7 +292,7 @@ func (p *Printer) printProjectListTable(summaries []entities.EntitySummary) erro
 			desc = desc[:47] + "..."
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
 			summary.Name,
 			desc,
 			summary.CreatedAt.Format("2006-01-02"),
@@ -299,40 +304,40 @@ func (p *Printer) printProjectListTable(summaries []entities.EntitySummary) erro
 
 // printConfigSheetTable prints a config sheet in table format
 func (p *Printer) printConfigSheetTable(cs *entities.ConfigSheet) error {
-	fmt.Fprintf(p.writer, "Config Sheet: %s\n", cs.Name)
-	fmt.Fprintf(p.writer, "ID: %s\n", cs.ID)
+	p.printf("Config Sheet: %s\n", cs.Name)
+	p.printf("ID: %s\n", cs.ID)
 	if cs.Description != "" {
-		fmt.Fprintf(p.writer, "Description: %s\n", cs.Description)
+		p.printf("Description: %s\n", cs.Description)
 	}
 
 	if cs.Project != "" {
-		fmt.Fprintf(p.writer, "Project: %s\n", cs.Project)
+		p.printf("Project: %s\n", cs.Project)
 	}
 	if cs.Environment != "" {
-		fmt.Fprintf(p.writer, "Environment: %s\n", cs.Environment)
+		p.printf("Environment: %s\n", cs.Environment)
 	}
 
 	if cs.Schema.IsReference() {
-		fmt.Fprintf(p.writer, "Schema Reference: %s\n", cs.Schema.Ref)
+		p.printf("Schema Reference: %s\n", cs.Schema.Ref)
 	} else if cs.Schema.IsInline() {
-		fmt.Fprintf(p.writer, "Schema: Inline (%d variables)\n", len(cs.Schema.Variables))
+		p.printf("Schema: Inline (%d variables)\n", len(cs.Schema.Variables))
 	}
 
-	fmt.Fprintf(p.writer, "Created: %s\n", cs.CreatedAt.Format(time.RFC3339))
-	fmt.Fprintf(p.writer, "Updated: %s\n", cs.UpdatedAt.Format(time.RFC3339))
+	p.printf("Created: %s\n", cs.CreatedAt.Format(time.RFC3339))
+	p.printf("Updated: %s\n", cs.UpdatedAt.Format(time.RFC3339))
 
 	if len(cs.Extends) > 0 {
-		fmt.Fprintf(p.writer, "Extends: %s\n", strings.Join(cs.Extends, ", "))
+		p.printf("Extends: %s\n", strings.Join(cs.Extends, ", "))
 	}
 
-	fmt.Fprintf(p.writer, "\nValues:\n")
+	p.printf("\nValues:\n")
 	return p.printValuesTable(cs.Values)
 }
 
 // printConfigSheetListTable prints a list of config sheets in table format
 func (p *Printer) printConfigSheetListTable(summaries []entities.EntitySummary) error {
 	if len(summaries) == 0 {
-		fmt.Fprintf(p.writer, "No config sheets found\n")
+		p.printf("No config sheets found\n")
 		return nil
 	}
 
@@ -342,8 +347,8 @@ func (p *Printer) printConfigSheetListTable(summaries []entities.EntitySummary) 
 	})
 
 	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	fmt.Fprintf(w, "----\t-----------\t-------\n")
+	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
+	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
 
 	for _, summary := range summaries {
 		desc := summary.Description
@@ -351,7 +356,7 @@ func (p *Printer) printConfigSheetListTable(summaries []entities.EntitySummary) 
 			desc = desc[:47] + "..."
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
 			summary.Name,
 			desc,
 			summary.CreatedAt.Format("2006-01-02"),
@@ -364,7 +369,7 @@ func (p *Printer) printConfigSheetListTable(summaries []entities.EntitySummary) 
 // printValuesTable prints variable values in table format
 func (p *Printer) printValuesTable(values map[string]string) error {
 	if len(values) == 0 {
-		fmt.Fprintf(p.writer, "  No values defined\n")
+		p.printf("  No values defined\n")
 		return nil
 	}
 
@@ -376,8 +381,8 @@ func (p *Printer) printValuesTable(values map[string]string) error {
 	sort.Strings(keys)
 
 	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "  VARIABLE\tVALUE\n")
-	fmt.Fprintf(w, "  --------\t-----\n")
+	_, _ = fmt.Fprintf(w, "  VARIABLE\tVALUE\n")
+	_, _ = fmt.Fprintf(w, "  --------\t-----\n")
 
 	for _, key := range keys {
 		value := values[key]
@@ -385,7 +390,7 @@ func (p *Printer) printValuesTable(values map[string]string) error {
 		if len(value) > 80 {
 			value = value[:77] + "..."
 		}
-		fmt.Fprintf(w, "  %s\t%s\n", key, value)
+		_, _ = fmt.Fprintf(w, "  %s\t%s\n", key, value)
 	}
 
 	return w.Flush()
@@ -411,7 +416,7 @@ func (p *Printer) PrintEnvironmentExport(values map[string]string) error {
 		value := values[key]
 		// Escape quotes in value
 		value = strings.ReplaceAll(value, "\"", "\\\"")
-		fmt.Fprintf(p.writer, "export %s=\"%s\"\n", key, value)
+		p.printf("export %s=\"%s\"\n", key, value)
 	}
 
 	return nil
@@ -432,7 +437,7 @@ func (p *Printer) PrintDotEnv(values map[string]string) error {
 		value = strings.ReplaceAll(value, "\\", "\\\\")
 		value = strings.ReplaceAll(value, "\"", "\\\"")
 		value = strings.ReplaceAll(value, "\n", "\\n")
-		fmt.Fprintf(p.writer, "%s=\"%s\"\n", key, value)
+		p.printf("%s=\"%s\"\n", key, value)
 	}
 
 	return nil

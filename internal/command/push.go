@@ -125,7 +125,12 @@ func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // pushSchemas pushes all local schemas to remote
-func (c *PushCommand) pushSchemas(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PushCommand) pushSchemas(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	summaries, err := manager.Schemas.List()
 	if err != nil {
 		return fmt.Errorf("failed to list schemas: %w", err)
@@ -162,7 +167,12 @@ func (c *PushCommand) pushSchemas(manager *entities.Manager, client *api.Client,
 }
 
 // pushProjects pushes all local projects to remote
-func (c *PushCommand) pushProjects(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PushCommand) pushProjects(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	summaries, err := manager.Projects.List()
 	if err != nil {
 		return fmt.Errorf("failed to list projects: %w", err)
@@ -199,7 +209,12 @@ func (c *PushCommand) pushProjects(manager *entities.Manager, client *api.Client
 }
 
 // pushConfigSheets pushes all local config sheets to remote
-func (c *PushCommand) pushConfigSheets(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PushCommand) pushConfigSheets(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	summaries, err := manager.ConfigSheets.List()
 	if err != nil {
 		return fmt.Errorf("failed to list config sheets: %w", err)

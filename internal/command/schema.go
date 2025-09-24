@@ -71,7 +71,8 @@ Examples:
 
 	cmd.Flags().String("import", "", "Import schema definition from a YAML file")
 	cmd.Flags().String("description", "", "Schema description")
-	cmd.Flags().StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
+	cmd.Flags().
+		StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
 	cmd.Flags().String("format", "table", "Output format (table, json)")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
@@ -262,7 +263,9 @@ func (c *SchemaCommand) createSchemaInteractively(
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	printer.Success(fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)))
+	printer.Success(
+		fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)),
+	)
 	return printer.PrintSchema(s)
 }
 
@@ -305,7 +308,9 @@ func (c *SchemaCommand) createSchemaFromCLI(
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	printer.Success(fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)))
+	printer.Success(
+		fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)),
+	)
 	return printer.PrintSchema(s)
 }
 
@@ -385,12 +390,19 @@ func (c *SchemaCommand) importSchema(
 	}
 
 	// Create schema using the manager
-	s, err := manager.Schemas.Create(name, schemaObj.Description, schemaObj.Variables, schemaObj.Extends)
+	s, err := manager.Schemas.Create(
+		name,
+		schemaObj.Description,
+		schemaObj.Variables,
+		schemaObj.Extends,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	printer.Success(fmt.Sprintf("Successfully imported schema '%s' with %d variables", name, len(s.Variables)))
+	printer.Success(
+		fmt.Sprintf("Successfully imported schema '%s' with %d variables", name, len(s.Variables)),
+	)
 	return printer.PrintSchema(s)
 }
 

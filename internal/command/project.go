@@ -21,23 +21,26 @@ type ProjectCommand struct {
 // resolveProjectName resolves the project name from args or .ee file
 // If args has at least one element, uses args[0] as project name
 // Otherwise, tries to get project name from .ee file in current directory
-func (c *ProjectCommand) resolveProjectName(args []string) (string, []string, error) {
+func (c *ProjectCommand) resolveProjectName(args []string) (string, error) {
 	if len(args) > 0 && args[0] != "" {
 		// Project name provided as argument
-		return args[0], args[1:], nil
+		return args[0], nil
 	}
 
 	// Try to get project name from .ee file
 	projectName, err := GetCurrentProject()
 	if err != nil {
-		return "", args, fmt.Errorf("no project specified and no .ee file found in current directory: %w", err)
+		return "", fmt.Errorf(
+			"no project specified and no .ee file found in current directory: %w",
+			err,
+		)
 	}
 
 	if projectName == "" {
-		return "", args, fmt.Errorf("no project specified and .ee file does not contain a project")
+		return "", fmt.Errorf("no project specified and .ee file does not contain a project")
 	}
 
-	return projectName, args, nil
+	return projectName, nil
 }
 
 // resolveProjectNameForEnvCommand resolves project name for env commands that expect:
@@ -54,7 +57,9 @@ func (c *ProjectCommand) resolveProjectNameForEnvCommand(args []string) (string,
 			return "", args, fmt.Errorf("no .ee file found, please specify project name: %w", err)
 		}
 		if projectName == "" {
-			return "", args, fmt.Errorf(".ee file does not contain a project, please specify project name")
+			return "", args, fmt.Errorf(
+				".ee file does not contain a project, please specify project name",
+			)
 		}
 		return projectName, args, nil
 	case 2:
@@ -277,7 +282,7 @@ If no project name is provided, uses the project from .ee file in current direct
 
 func (c *ProjectCommand) runCreate(cmd *cobra.Command, args []string) error {
 	// Get manager from context
-	var manager *entities.Manager = GetEntityManager(cmd.Context())
+	manager := GetEntityManager(cmd.Context())
 	if manager == nil {
 		return fmt.Errorf("entity manager not initialized")
 	}
@@ -323,7 +328,7 @@ func (c *ProjectCommand) runShow(cmd *cobra.Command, args []string) error {
 	printer := output.NewPrinter(output.Format(format), false)
 
 	// Resolve project name
-	projectName, _, err := c.resolveProjectName(args)
+	projectName, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}
@@ -367,7 +372,7 @@ func (c *ProjectCommand) runDelete(cmd *cobra.Command, args []string) error {
 	printer := output.NewPrinter(output.FormatTable, quiet)
 
 	// Resolve project name
-	projectName, _, err := c.resolveProjectName(args)
+	projectName, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}
@@ -390,7 +395,7 @@ func (c *ProjectCommand) runEdit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve project name
-	projectName, _, err := c.resolveProjectName(args)
+	projectName, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}
@@ -527,7 +532,9 @@ func (c *ProjectCommand) runSetSchema(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to update project schema: %w", err)
 			}
 
-			printer.Success(fmt.Sprintf("Set schema for project '%s' to '%s'", projectName, schemaName))
+			printer.Success(
+				fmt.Sprintf("Set schema for project '%s' to '%s'", projectName, schemaName),
+			)
 			return nil
 		} else {
 			// No .ee file, treat arg as project name and show schema
@@ -638,7 +645,7 @@ func (c *ProjectCommand) runEnvList(cmd *cobra.Command, args []string) error {
 	printer := output.NewPrinter(output.FormatTable, false)
 
 	// Resolve project name
-	projectName, _, err := c.resolveProjectName(args)
+	projectName, err := c.resolveProjectName(args)
 	if err != nil {
 		return err
 	}

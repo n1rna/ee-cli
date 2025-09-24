@@ -25,7 +25,11 @@ func NewConfigSheetManager(cfg *config.Config) (*ConfigSheetManager, error) {
 }
 
 // Create creates a new standalone config sheet
-func (csm *ConfigSheetManager) Create(name, description string, schemaRef SchemaReference, values map[string]string) (*ConfigSheet, error) {
+func (csm *ConfigSheetManager) Create(
+	name, description string,
+	schemaRef SchemaReference,
+	values map[string]string,
+) (*ConfigSheet, error) {
 	// Check if config sheet with same name already exists
 	if _, err := csm.GetByName(name); err == nil {
 		return nil, fmt.Errorf("config sheet with name '%s' already exists", name)
@@ -33,7 +37,6 @@ func (csm *ConfigSheetManager) Create(name, description string, schemaRef Schema
 
 	// Create new config sheet
 	cs := NewConfigSheet(name, description, schemaRef, values)
-
 
 	// Save config sheet
 	if err := csm.Save(cs); err != nil {
@@ -44,7 +47,12 @@ func (csm *ConfigSheetManager) Create(name, description string, schemaRef Schema
 }
 
 // CreateForProject creates a new config sheet for a project environment
-func (csm *ConfigSheetManager) CreateForProject(name, description string, schemaRef SchemaReference, projectUUID, envName string, values map[string]string) (*ConfigSheet, error) {
+func (csm *ConfigSheetManager) CreateForProject(
+	name, description string,
+	schemaRef SchemaReference,
+	projectUUID, envName string,
+	values map[string]string,
+) (*ConfigSheet, error) {
 	// Check if config sheet with same name already exists
 	if _, err := csm.GetByName(name); err == nil {
 		return nil, fmt.Errorf("config sheet with name '%s' already exists", name)
@@ -52,7 +60,6 @@ func (csm *ConfigSheetManager) CreateForProject(name, description string, schema
 
 	// Create new config sheet for project
 	cs := NewConfigSheetForProject(name, description, schemaRef, projectUUID, envName, values)
-
 
 	// Save config sheet
 	if err := csm.Save(cs); err != nil {
@@ -171,7 +178,8 @@ func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]Ent
 		// Check standalone filter
 		if standaloneFilter, ok := filters["standalone"]; ok {
 			isStandalone := cs.IsStandalone()
-			if (standaloneFilter == "true" && !isStandalone) || (standaloneFilter == "false" && isStandalone) {
+			if (standaloneFilter == "true" && !isStandalone) ||
+				(standaloneFilter == "false" && isStandalone) {
 				matches = false
 			}
 		}
@@ -195,7 +203,10 @@ func (csm *ConfigSheetManager) ListByProject(projectUUID string) ([]EntitySummar
 }
 
 // Update updates an existing config sheet
-func (csm *ConfigSheetManager) Update(nameOrUUID string, updater func(*ConfigSheet) error) (*ConfigSheet, error) {
+func (csm *ConfigSheetManager) Update(
+	nameOrUUID string,
+	updater func(*ConfigSheet) error,
+) (*ConfigSheet, error) {
 	// Load existing config sheet
 	cs, err := csm.Get(nameOrUUID)
 	if err != nil {
@@ -206,7 +217,6 @@ func (csm *ConfigSheetManager) Update(nameOrUUID string, updater func(*ConfigShe
 	if err := updater(cs); err != nil {
 		return nil, fmt.Errorf("failed to apply updates: %w", err)
 	}
-
 
 	// Save updated config sheet
 	if err := csm.Save(cs); err != nil {
@@ -231,4 +241,3 @@ func (csm *ConfigSheetManager) UnsetValue(nameOrUUID, varName string) (*ConfigSh
 		return nil
 	})
 }
-

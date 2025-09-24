@@ -99,7 +99,7 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 		printer.Info(fmt.Sprintf("Using schema: %s", schemaName))
 	} else {
 		// Create a default schema if none specified
-		defaultSchema, err := c.createDefaultSchema(manager, projectName)
+		defaultSchema, err := c.createDefaultSchema(manager)
 		if err != nil {
 			return fmt.Errorf("failed to create default schema: %w", err)
 		}
@@ -120,20 +120,23 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	printer.Success(fmt.Sprintf("Initialized ee project: %s", projectName))
-	printer.Info(fmt.Sprintf("Created .ee file in current directory"))
+	printer.Info("Created .ee file in current directory")
 	printer.Info(fmt.Sprintf("Project ID: %s", project.ID))
 
 	// Show next steps
 	printer.Info("Next steps:")
 	printer.Info("  1. Add environments: ee project env add development")
-	printer.Info("  2. Create config sheets: ee sheet create my-app-dev --project " + projectName + " --environment development")
+	printer.Info("  2. Create config sheets: ee sheet create my-app-dev --project " +
+		projectName + " --environment development")
 	printer.Info("  3. Apply environment: ee apply development")
 
 	return nil
 }
 
 // createDefaultSchema creates a default schema for the project
-func (c *InitCommand) createDefaultSchema(manager *entities.Manager, projectName string) (*entities.Schema, error) {
+func (c *InitCommand) createDefaultSchema(
+	manager *entities.Manager,
+) (*entities.Schema, error) {
 	schemaName := "default"
 
 	// Check if default schema already exists
@@ -175,7 +178,10 @@ func (c *InitCommand) createDefaultSchema(manager *entities.Manager, projectName
 }
 
 // getOrCreateProject gets an existing project or creates a new one
-func (c *InitCommand) getOrCreateProject(manager *entities.Manager, projectName, schemaID string) (*entities.Project, error) {
+func (c *InitCommand) getOrCreateProject(
+	manager *entities.Manager,
+	projectName, schemaID string,
+) (*entities.Project, error) {
 	// Try to get existing project
 	if p, err := manager.Projects.GetByName(projectName); err == nil {
 		// Project exists, update schema if needed

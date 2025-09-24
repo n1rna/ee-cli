@@ -73,7 +73,8 @@ Examples:
 	cmd.Flags().String("project", "", "Project to associate this sheet with")
 	cmd.Flags().String("environment", "", "Environment within the project")
 	cmd.Flags().String("description", "", "Sheet description")
-	cmd.Flags().StringToString("value", map[string]string{}, "Set variable values (format: --value KEY=VALUE)")
+	cmd.Flags().
+		StringToString("value", map[string]string{}, "Set variable values (format: --value KEY=VALUE)")
 	cmd.Flags().String("import", "", "Import values from a file (YAML or JSON)")
 	cmd.Flags().String("format", "table", "Output format (table, json)")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
@@ -192,7 +193,7 @@ func (c *SheetCommand) newUnsetCommand() *cobra.Command {
 
 func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 	// Get manager from context
-	var manager *entities.Manager = GetEntityManager(cmd.Context())
+	manager := GetEntityManager(cmd.Context())
 	if manager == nil {
 		return fmt.Errorf("entity manager not initialized")
 	}
@@ -247,7 +248,14 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 		}
 
 		// Create config sheet without validation first
-		cs = entities.NewConfigSheetForProject(sheetName, description, schemaRef, p.ID, envName, values)
+		cs = entities.NewConfigSheetForProject(
+			sheetName,
+			description,
+			schemaRef,
+			p.ID,
+			envName,
+			values,
+		)
 
 		// Validate using manager's validator
 		validator := manager.GetValidator()

@@ -173,9 +173,3 @@ func (bs *baseStorage) listSummaries() ([]EntitySummary, error) {
 
 	return index.ListSummaries(), nil
 }
-
-// entityExists checks if an entity exists by name or UUID
-func (bs *baseStorage) entityExists(nameOrUUID string) bool {
-	_, err := bs.resolveUUID(nameOrUUID)
-	return err == nil
-}

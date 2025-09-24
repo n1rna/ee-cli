@@ -125,7 +125,12 @@ func (c *PullCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // pullSchemas pulls all remote schemas to local
-func (c *PullCommand) pullSchemas(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PullCommand) pullSchemas(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	remoteSchemas, err := client.ListSchemas()
 	if err != nil {
 		return fmt.Errorf("failed to list remote schemas: %w", err)
@@ -154,7 +159,13 @@ func (c *PullCommand) pullSchemas(manager *entities.Manager, client *api.Client,
 			}
 
 			if dryRun {
-				printer.Info(fmt.Sprintf("  Would update schema: %s (%s)", remoteSchema.Name, remoteSchema.GUID))
+				printer.Info(
+					fmt.Sprintf(
+						"  Would update schema: %s (%s)",
+						remoteSchema.Name,
+						remoteSchema.GUID,
+					),
+				)
 			} else {
 				// Update local schema with remote data
 				if err := manager.Schemas.Save(localSchemaData); err != nil {
@@ -187,7 +198,12 @@ func (c *PullCommand) pullSchemas(manager *entities.Manager, client *api.Client,
 }
 
 // pullProjects pulls all remote projects to local
-func (c *PullCommand) pullProjects(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PullCommand) pullProjects(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	remoteProjects, err := client.ListProjects()
 	if err != nil {
 		return fmt.Errorf("failed to list remote projects: %w", err)
@@ -216,7 +232,13 @@ func (c *PullCommand) pullProjects(manager *entities.Manager, client *api.Client
 			}
 
 			if dryRun {
-				printer.Info(fmt.Sprintf("  Would update project: %s (%s)", remoteProject.Name, remoteProject.GUID))
+				printer.Info(
+					fmt.Sprintf(
+						"  Would update project: %s (%s)",
+						remoteProject.Name,
+						remoteProject.GUID,
+					),
+				)
 			} else {
 				// Update local project with remote data
 				if err := manager.Projects.Save(localProjectData); err != nil {
@@ -249,7 +271,12 @@ func (c *PullCommand) pullProjects(manager *entities.Manager, client *api.Client
 }
 
 // pullConfigSheets pulls all remote config sheets to local
-func (c *PullCommand) pullConfigSheets(manager *entities.Manager, client *api.Client, printer *output.Printer, dryRun bool) error {
+func (c *PullCommand) pullConfigSheets(
+	manager *entities.Manager,
+	client *api.Client,
+	printer *output.Printer,
+	dryRun bool,
+) error {
 	remoteSheets, err := client.ListAllConfigSheets()
 	if err != nil {
 		return fmt.Errorf("failed to list remote config sheets: %w", err)
@@ -278,7 +305,13 @@ func (c *PullCommand) pullConfigSheets(manager *entities.Manager, client *api.Cl
 			}
 
 			if dryRun {
-				printer.Info(fmt.Sprintf("  Would update config sheet: %s (%s)", remoteSheet.Name, remoteSheet.GUID))
+				printer.Info(
+					fmt.Sprintf(
+						"  Would update config sheet: %s (%s)",
+						remoteSheet.Name,
+						remoteSheet.GUID,
+					),
+				)
 			} else {
 				// Update local config sheet with remote data
 				if err := manager.ConfigSheets.Save(localSheetData); err != nil {

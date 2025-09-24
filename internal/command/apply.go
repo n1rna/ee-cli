@@ -62,7 +62,8 @@ Examples:
 	}
 
 	cmd.Flags().String("project", "", "Project name (auto-detected from .ee file if not specified)")
-	cmd.Flags().BoolP("standalone", "s", false, "Apply standalone config sheet instead of project environment")
+	cmd.Flags().BoolP("standalone", "s", false,
+		"Apply standalone config sheet instead of project environment")
 	cmd.Flags().BoolP("dry-run", "d", false, "Show what would be applied without executing")
 	cmd.Flags().StringP("format", "f", "env", "Output format for dry-run (env, dotenv, json)")
 	cmd.Flags().BoolP("quiet", "q", false, "Suppress informational output")
@@ -164,21 +165,31 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // applyStandaloneSheet applies a standalone config sheet
-func (c *ApplyCommand) applyStandaloneSheet(manager *entities.Manager, sheetName string) (map[string]string, error) {
+func (c *ApplyCommand) applyStandaloneSheet(
+	manager *entities.Manager,
+	sheetName string,
+) (map[string]string, error) {
 	cs, err := manager.ConfigSheets.Get(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("config sheet '%s' not found: %w", sheetName, err)
 	}
 
 	if !cs.IsStandalone() {
-		return nil, fmt.Errorf("config sheet '%s' is not standalone (it's associated with project '%s')", sheetName, cs.Project)
+		return nil, fmt.Errorf(
+			"config sheet '%s' is not standalone (it's associated with project '%s')",
+			sheetName,
+			cs.Project,
+		)
 	}
 
 	return cs.Values, nil
 }
 
 // applyProjectEnvironment applies a project environment
-func (c *ApplyCommand) applyProjectEnvironment(manager *entities.Manager, projectName, envName string) (map[string]string, error) {
+func (c *ApplyCommand) applyProjectEnvironment(
+	manager *entities.Manager,
+	projectName, envName string,
+) (map[string]string, error) {
 	// If no project name specified, try to get from .ee file
 	if projectName == "" {
 		var err error
@@ -206,14 +217,23 @@ func (c *ApplyCommand) applyProjectEnvironment(manager *entities.Manager, projec
 	configSheetName := p.GetConfigSheetName(envName)
 	cs, err := manager.ConfigSheets.Get(configSheetName)
 	if err != nil {
-		return nil, fmt.Errorf("config sheet '%s' not found for environment '%s': %w", configSheetName, envName, err)
+		return nil, fmt.Errorf(
+			"config sheet '%s' not found for environment '%s': %w",
+			configSheetName,
+			envName,
+			err,
+		)
 	}
 
 	return cs.Values, nil
 }
 
 // runCommandWithEnvironment runs a command with the specified environment variables
-func (c *ApplyCommand) runCommandWithEnvironment(values map[string]string, commandArgs []string, printer *output.Printer) error {
+func (c *ApplyCommand) runCommandWithEnvironment(
+	values map[string]string,
+	commandArgs []string,
+	printer *output.Printer,
+) error {
 	if len(commandArgs) == 0 {
 		return fmt.Errorf("no command specified")
 	}
@@ -246,7 +266,10 @@ func (c *ApplyCommand) runCommandWithEnvironment(values map[string]string, comma
 }
 
 // startShellWithEnvironment starts a new shell with the specified environment variables
-func (c *ApplyCommand) startShellWithEnvironment(values map[string]string, printer *output.Printer) error {
+func (c *ApplyCommand) startShellWithEnvironment(
+	values map[string]string,
+	printer *output.Printer,
+) error {
 	// Determine shell
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -276,7 +299,7 @@ func (c *ApplyCommand) startShellWithEnvironment(values map[string]string, print
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	printer.Info(fmt.Sprintf("Starting shell with environment variables applied"))
+	printer.Info("Starting shell with environment variables applied")
 	printer.Info(fmt.Sprintf("Shell: %s", shell))
 	printer.Info(fmt.Sprintf("Applied %d environment variables", len(values)))
 
@@ -326,7 +349,11 @@ func (c *ApplyCommand) applyEnvFile(filePath string) (map[string]string, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open .env file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			// Log error but don't override the main error
+		}
+	}()
 
 	values := make(map[string]string)
 	scanner := bufio.NewScanner(file)

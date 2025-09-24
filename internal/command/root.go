@@ -32,7 +32,9 @@ When run without subcommands, displays all environment variables in the current 
 	}
 
 	// Add flags for filtering and formatting
-	cmd.Flags().StringP("filter", "I", "", "Filter environment variables using wildcard patterns separated by comma, pipe, or slash (e.g., 'PATH*,USER*', '*_URL|*_KEY', '!CLAUDE*/NODE*')")
+	cmd.Flags().StringP("filter", "I", "",
+		"Filter environment variables using wildcard patterns separated by comma, pipe, or slash "+
+			"(e.g., 'PATH*,USER*', '*_URL|*_KEY', '!CLAUDE*/NODE*')")
 	cmd.Flags().StringP("format", "f", "env", "Output format (env, json, dotenv)")
 
 	return cmd

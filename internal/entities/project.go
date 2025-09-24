@@ -112,7 +112,10 @@ func (pm *ProjectManager) List() ([]EntitySummary, error) {
 }
 
 // Update updates an existing project
-func (pm *ProjectManager) Update(nameOrUUID string, updater func(*Project) error) (*Project, error) {
+func (pm *ProjectManager) Update(
+	nameOrUUID string,
+	updater func(*Project) error,
+) (*Project, error) {
 	// Load existing project
 	p, err := pm.Get(nameOrUUID)
 	if err != nil {
@@ -147,4 +150,3 @@ func (pm *ProjectManager) RemoveEnvironment(projectNameOrUUID, envName string) (
 		return nil
 	})
 }
-
