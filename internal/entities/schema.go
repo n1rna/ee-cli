@@ -4,6 +4,7 @@ package entities
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/n1rna/ee-cli/internal/config"
 )
@@ -135,4 +136,22 @@ func (sm *SchemaManager) Update(nameOrUUID string, updater func(*Schema) error) 
 	}
 
 	return s, nil
+}
+
+// GetByReference loads a schema by reference, handling local:// and remote:// prefixes
+func (sm *SchemaManager) GetByReference(schemaRef string) (*Schema, error) {
+	switch {
+	case strings.HasPrefix(schemaRef, "local://"):
+		// Local schema reference: local://schema-name
+		schemaName := strings.TrimPrefix(schemaRef, "local://")
+		return sm.Get(schemaName)
+
+	case strings.HasPrefix(schemaRef, "remote://"):
+		// Remote schema reference: not yet implemented
+		return nil, fmt.Errorf("remote schema references not yet implemented: %s", schemaRef)
+
+	default:
+		// Assume it's a local schema name without prefix
+		return sm.Get(schemaRef)
+	}
 }

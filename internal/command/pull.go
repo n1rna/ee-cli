@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/api"
-	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
 )
 
@@ -21,7 +21,7 @@ func NewPullCommand(groupId string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull",
 		Short: "Pull remote entities to local",
-		Long: `Pull schemas, projects, and config sheets from the remote server to local storage.
+		Long: `Pull schemas and config sheets from the remote server to local storage.
 
 This command synchronizes your local entities with the remote server, downloading
 any changes or new entities that exist remotely but not locally.
@@ -33,9 +33,6 @@ Examples:
   # Pull only schemas
   ee pull --schemas
 
-  # Pull only projects
-  ee pull --projects
-
   # Pull only config sheets
   ee pull --sheets
 
@@ -46,7 +43,6 @@ Examples:
 	}
 
 	cmd.Flags().Bool("schemas", false, "Pull only schemas")
-	cmd.Flags().Bool("projects", false, "Pull only projects")
 	cmd.Flags().Bool("sheets", false, "Pull only config sheets")
 	cmd.Flags().Bool("dry-run", false, "Show what would be pulled without actually pulling")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
@@ -83,32 +79,24 @@ func (c *PullCommand) Run(cmd *cobra.Command, args []string) error {
 
 	// Get flags
 	schemasOnly, _ := cmd.Flags().GetBool("schemas")
-	projectsOnly, _ := cmd.Flags().GetBool("projects")
 	sheetsOnly, _ := cmd.Flags().GetBool("sheets")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	// If no specific flags, pull everything
-	pullAll := !schemasOnly && !projectsOnly && !sheetsOnly
+	pullAll := !schemasOnly && !sheetsOnly
 
 	if dryRun {
 		printer.Info("Dry run mode - showing what would be pulled:")
 	}
 
-	// Pull schemas first (since projects and sheets depend on them)
+	// Pull schemas first (since sheets depend on them)
 	if pullAll || schemasOnly {
 		if err := c.pullSchemas(manager, client, printer, dryRun); err != nil {
 			return fmt.Errorf("failed to pull schemas: %w", err)
 		}
 	}
 
-	// Pull projects (since sheets might depend on them)
-	if pullAll || projectsOnly {
-		if err := c.pullProjects(manager, client, printer, dryRun); err != nil {
-			return fmt.Errorf("failed to pull projects: %w", err)
-		}
-	}
-
-	// Pull config sheets last
+	// Pull config sheets
 	if pullAll || sheetsOnly {
 		if err := c.pullConfigSheets(manager, client, printer, dryRun); err != nil {
 			return fmt.Errorf("failed to pull config sheets: %w", err)
@@ -126,7 +114,7 @@ func (c *PullCommand) Run(cmd *cobra.Command, args []string) error {
 
 // pullSchemas pulls all remote schemas to local
 func (c *PullCommand) pullSchemas(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,
@@ -197,82 +185,9 @@ func (c *PullCommand) pullSchemas(
 	return nil
 }
 
-// pullProjects pulls all remote projects to local
-func (c *PullCommand) pullProjects(
-	manager *entities.Manager,
-	client *api.Client,
-	printer *output.Printer,
-	dryRun bool,
-) error {
-	remoteProjects, err := client.ListProjects()
-	if err != nil {
-		return fmt.Errorf("failed to list remote projects: %w", err)
-	}
-
-	if len(remoteProjects) == 0 {
-		printer.Info("No projects to pull")
-		return nil
-	}
-
-	printer.Info(fmt.Sprintf("Pulling %d projects...", len(remoteProjects)))
-
-	pulled := 0
-	skipped := 0
-
-	for _, remoteProject := range remoteProjects {
-		// Convert API project to local type
-		localProjectData := api.ProjectFromAPI(&remoteProject)
-
-		// Check if project already exists locally
-		if existingProject, err := manager.Projects.GetByID(remoteProject.GUID); err == nil {
-			// Project exists locally - check if remote is newer
-			if !remoteProject.UpdatedAt.Time().After(existingProject.UpdatedAt) {
-				skipped++
-				continue
-			}
-
-			if dryRun {
-				printer.Info(
-					fmt.Sprintf(
-						"  Would update project: %s (%s)",
-						remoteProject.Name,
-						remoteProject.GUID,
-					),
-				)
-			} else {
-				// Update local project with remote data
-				if err := manager.Projects.Save(localProjectData); err != nil {
-					printer.Warning(fmt.Sprintf("Failed to update project %s: %v", remoteProject.Name, err))
-					continue
-				}
-				printer.Info(fmt.Sprintf("  Updated project: %s", remoteProject.Name))
-				pulled++
-			}
-		} else {
-			// Project doesn't exist locally - create it
-			if dryRun {
-				printer.Info(fmt.Sprintf("  Would create project: %s (%s)", remoteProject.Name, remoteProject.GUID))
-			} else {
-				if err := manager.Projects.Save(localProjectData); err != nil {
-					printer.Warning(fmt.Sprintf("Failed to create project %s: %v", remoteProject.Name, err))
-					continue
-				}
-				printer.Info(fmt.Sprintf("  Created project: %s", remoteProject.Name))
-				pulled++
-			}
-		}
-	}
-
-	if !dryRun && pulled > 0 {
-		printer.Info(fmt.Sprintf("Pulled %d projects (%d skipped)", pulled, skipped))
-	}
-
-	return nil
-}
-
 // pullConfigSheets pulls all remote config sheets to local
 func (c *PullCommand) pullConfigSheets(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,

@@ -9,7 +9,8 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/command"
 	"github.com/n1rna/ee-cli/internal/config"
-	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/util"
 )
 
 var (
@@ -25,7 +26,7 @@ func main() {
 	rootCmd := command.NewRootCommand()
 	rootCmd.Version = version
 
-	// Set up persistent pre-run for entity manager initialization
+	// Set up persistent pre-run for entity manager and command context initialization
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Load configuration from environment
 		cfg, err := config.LoadConfig()
@@ -43,13 +44,20 @@ func main() {
 		}
 
 		// Initialize entity manager
-		entityManager, err := entities.NewManager(cfg)
+		entityManager, err := manager.NewManager(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize entity manager: %w", err)
 		}
 
-		// Store entity manager in command context
+		// Initialize command context (includes project detection and entity manager)
+		commandContext, err := util.NewCommandContext(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize command context: %w", err)
+		}
+
+		// Store both entity manager and command context in command context
 		ctx := command.WithEntityManager(cmd.Context(), entityManager)
+		ctx = command.WithCommandContext(ctx, commandContext)
 		cmd.SetContext(ctx)
 		return nil
 	}
@@ -76,13 +84,13 @@ func main() {
 	// Add commands organized by groups
 	rootCmd.AddCommand(
 		// Global Commands - basic project operations
-		command.NewInitCommand("global"),  // Project initialization
-		command.NewApplyCommand("global"), // Apply environment variables
+		command.NewInitCommand("global"),   // Project initialization
+		command.NewApplyCommand("global"),  // Apply environment variables
+		command.NewVerifyCommand("global"), // Verify project configuration
 
 		// Entity Management - local entity operations
-		command.NewSchemaCommand("entities"),  // Schema management
-		command.NewSheetCommand("entities"),   // Config sheet management
-		command.NewProjectCommand("entities"), // Project management
+		command.NewSchemaCommand("entities"), // Schema management
+		command.NewSheetCommand("entities"),  // Config sheet management
 
 		// Remote Operations - require authentication
 		command.NewPushCommand("authenticated"), // Push to remote

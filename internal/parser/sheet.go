@@ -1,5 +1,4 @@
-// Package util provides utility functions for sheet reference parsing.
-package util
+package parser
 
 import (
 	"fmt"

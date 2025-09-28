@@ -1,40 +1,34 @@
-// Package entities provides a unified manager for all entity types.
-package entities
+// Package manager provides a unified manager for all entity types.
+package manager
 
 import (
 	"fmt"
 
 	"github.com/n1rna/ee-cli/internal/config"
+	"github.com/n1rna/ee-cli/internal/entities"
 )
 
 // Manager provides a unified interface to all entity managers
 type Manager struct {
-	Schemas      *SchemaManager
-	Projects     *ProjectManager
-	ConfigSheets *ConfigSheetManager
+	Schemas      *entities.SchemaManager
+	ConfigSheets *entities.ConfigSheetManager
 	config       *config.Config
 }
 
 // NewManager creates a new unified entity manager
 func NewManager(cfg *config.Config) (*Manager, error) {
-	schemas, err := NewSchemaManager(cfg)
+	schemas, err := entities.NewSchemaManager(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema manager: %w", err)
 	}
 
-	projects, err := NewProjectManager(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create project manager: %w", err)
-	}
-
-	configSheets, err := NewConfigSheetManager(cfg)
+	configSheets, err := entities.NewConfigSheetManager(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config sheet manager: %w", err)
 	}
 
 	return &Manager{
 		Schemas:      schemas,
-		Projects:     projects,
 		ConfigSheets: configSheets,
 		config:       cfg,
 	}, nil

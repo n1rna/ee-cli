@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/parser"
 )
 
 // InitCommand handles the ee init command
@@ -21,34 +23,39 @@ func NewInitCommand(groupId string) *cobra.Command {
 	ic := &InitCommand{}
 
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Initialize a local ee project configuration",
-		Long: `Initialize a local ee project configuration by creating a .ee file.
+		Use:   "init [project-name]",
+		Short: "Initialize a new ee project with .ee configuration file",
+		Long: `Initialize a new ee project by creating a .ee configuration file in JSON format.
 
-This command creates a .ee file in the current working directory and registers
-the project in your local ee storage. If the project doesn't exist, it will
-be created with a default schema.
+This command creates a .ee file in the current working directory with project
+configuration including schema definitions, environments, and remote references.
+Projects are now completely self-contained and portable.
 
 Examples:
-  # Initialize with project name from current directory
+  # Initialize with current directory name
   ee init
 
   # Initialize with specific project name
-  ee init --project my-api
+  ee init my-api
 
-  # Initialize with specific project and schema
-  ee init --project my-api --schema api-service
+  # Initialize with schema reference
+  ee init my-api --schema web-service
 
   # Initialize with remote URL
-  ee init --project my-api --remote https://api.ee.dev
+  ee init my-api --remote https://api.ee.dev
+
+  # Initialize with inline schema variables
+  ee init my-api --var "PORT:number:Server port:false:3000" --var "NODE_ENV:string:Environment:true:development"
 `,
 		RunE:    ic.Run,
 		GroupID: groupId,
 	}
 
-	cmd.Flags().String("project", "", "Project name (defaults to current directory name)")
-	cmd.Flags().String("schema", "", "Schema to use for the project")
+	cmd.Flags().
+		String("schema", "", "Schema reference to use (local://schema-name or remote://path)")
 	cmd.Flags().String("remote", "", "Remote URL for synchronization")
+	cmd.Flags().
+		StringSlice("var", []string{}, "Add schema variable (format:name:type:title:required:default)")
 	cmd.Flags().Bool("force", false, "Overwrite existing .ee file")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
@@ -57,23 +64,22 @@ Examples:
 
 // Run executes the init command
 func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
-	// Get manager from context
-	manager := GetEntityManager(cmd.Context())
-	if manager == nil {
-		return fmt.Errorf("entity manager not initialized")
-	}
-
 	// Set up printer
 	quiet, _ := cmd.Flags().GetBool("quiet")
 	printer := output.NewPrinter(output.FormatTable, quiet)
 
-	projectName, _ := cmd.Flags().GetString("project")
-	schemaName, _ := cmd.Flags().GetString("schema")
+	// Get flags
+	schemaRef, _ := cmd.Flags().GetString("schema")
 	remote, _ := cmd.Flags().GetString("remote")
+	variables, _ := cmd.Flags().GetStringSlice("var")
 	force, _ := cmd.Flags().GetBool("force")
 
-	// If no project name specified, use current directory name
-	if projectName == "" {
+	// Determine project name
+	var projectName string
+	if len(args) > 0 {
+		projectName = args[0]
+	} else {
+		// Use current directory name
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
@@ -88,79 +94,103 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(".ee file already exists (use --force to overwrite)")
 	}
 
-	// Resolve schema
-	var schemaID string
-	if schemaName != "" {
-		s, err := manager.Schemas.Get(schemaName)
-		if err != nil {
-			return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
-		}
-		schemaID = s.ID
-		printer.Info(fmt.Sprintf("Using schema: %s", schemaName))
-	} else {
-		// Create a default schema if none specified
-		defaultSchema, err := c.createDefaultSchema(manager)
-		if err != nil {
-			return fmt.Errorf("failed to create default schema: %w", err)
-		}
-		schemaID = defaultSchema.ID
-		printer.Info(fmt.Sprintf("Created default schema: %s", defaultSchema.Name))
-	}
-
-	// Create or get project
-	project, err := c.getOrCreateProject(manager, projectName, schemaID)
+	// Build schema configuration
+	schema, err := c.buildSchemaConfig(schemaRef, variables)
 	if err != nil {
-		return fmt.Errorf("failed to create project: %w", err)
+		return fmt.Errorf("failed to build schema config: %w", err)
 	}
 
-	// Create .ee file
-	err = c.createEEFile(eeFile, project.Name, remote)
+	// Create project configuration
+	projectConfig := &parser.ProjectConfig{
+		Project: projectName,
+		Remote:  remote,
+		Schema:  schema,
+		Environments: map[string]parser.EnvironmentDefinition{
+			"development": {
+				Sheets: []interface{}{".env.development"},
+			},
+			"production": {
+				Sheets: []interface{}{".env.production"},
+			},
+		},
+	}
+
+	// Save .ee file
+	err = parser.SaveProjectConfig(projectConfig, eeFile)
 	if err != nil {
-		return fmt.Errorf("failed to create .ee file: %w", err)
+		return fmt.Errorf("failed to save .ee file: %w", err)
 	}
 
-	printer.Success(fmt.Sprintf("Initialized ee project: %s", projectName))
-	printer.Info("Created .ee file in current directory")
-	printer.Info(fmt.Sprintf("Project ID: %s", project.ID))
+	// Get entity manager from context for schema loading
+	manager := GetEntityManager(cmd.Context())
+	if manager == nil {
+		printer.Warning("Entity manager not available - .env files will use basic schema")
+	}
+
+	// Create sample .env files
+	err = c.createSampleEnvFiles(projectConfig, manager)
+	if err != nil {
+		printer.Warning(fmt.Sprintf("Failed to create sample .env files: %v", err))
+	}
+
+	printer.Success(fmt.Sprintf("✓ Initialized ee project: %s", projectName))
+	printer.Info("✓ Created .ee configuration file")
+	if len(projectConfig.Environments) > 0 {
+		printer.Info("✓ Created sample .env files for environments")
+	}
 
 	// Show next steps
-	printer.Info("Next steps:")
-	printer.Info("  1. Add environments: ee project env add development")
-	printer.Info("  2. Create config sheets: ee sheet create my-app-dev --project " +
-		projectName + " --environment development")
-	printer.Info("  3. Apply environment: ee apply development")
+	printer.Info("\nNext steps:")
+	printer.Info("  1. Edit .env files to add your environment variables")
+	printer.Info("  2. Apply environment: ee apply development")
+	printer.Info("  3. Run commands with environment: ee apply development -- npm start")
 
 	return nil
 }
 
-// createDefaultSchema creates a default schema for the project
-func (c *InitCommand) createDefaultSchema(
-	manager *entities.Manager,
-) (*entities.Schema, error) {
-	schemaName := "default"
+// buildSchemaConfig builds the schema configuration from flags
+func (c *InitCommand) buildSchemaConfig(
+	schemaRef string,
+	variables []string,
+) (parser.ProjectConfigSchema, error) {
+	schema := parser.ProjectConfigSchema{}
 
-	// Check if default schema already exists
-	if s, err := manager.Schemas.GetByName(schemaName); err == nil {
-		return s, nil
+	// If schema reference is provided, use it
+	if schemaRef != "" {
+		schema.Ref = schemaRef
+		return schema, nil
 	}
 
-	// Create default schema with common variables
-	variables := []entities.Variable{
-		{
+	// If variables are provided, create inline schema
+	if len(variables) > 0 {
+		schema.Variables = make(map[string]entities.Variable)
+		for _, varDef := range variables {
+			variable, err := c.parseVariableDefinition(varDef)
+			if err != nil {
+				return schema, fmt.Errorf("invalid variable definition '%s': %w", varDef, err)
+			}
+			schema.Variables[variable.Name] = variable
+		}
+		return schema, nil
+	}
+
+	// Create default inline schema
+	schema.Variables = map[string]entities.Variable{
+		"NODE_ENV": {
 			Name:     "NODE_ENV",
 			Type:     "string",
 			Title:    "Node environment",
 			Required: false,
 			Default:  "development",
 		},
-		{
+		"PORT": {
 			Name:     "PORT",
 			Type:     "number",
 			Title:    "Server port",
 			Required: false,
 			Default:  "3000",
 		},
-		{
+		"DEBUG": {
 			Name:     "DEBUG",
 			Type:     "boolean",
 			Title:    "Debug mode",
@@ -169,119 +199,153 @@ func (c *InitCommand) createDefaultSchema(
 		},
 	}
 
-	return manager.Schemas.Create(
-		schemaName,
-		"Default schema created by ee init",
-		variables,
-		nil,
-	)
+	return schema, nil
 }
 
-// getOrCreateProject gets an existing project or creates a new one
-func (c *InitCommand) getOrCreateProject(
-	manager *entities.Manager,
-	projectName, schemaID string,
-) (*entities.Project, error) {
-	// Try to get existing project
-	if p, err := manager.Projects.GetByName(projectName); err == nil {
-		// Project exists, update schema if needed
-		if p.Schema != schemaID {
-			return manager.Projects.Update(projectName, func(proj *entities.Project) error {
-				proj.Schema = schemaID
-				return nil
-			})
-		}
-		return p, nil
+// parseVariableDefinition parses a variable definition string (name:type:title:required:default)
+func (c *InitCommand) parseVariableDefinition(varDef string) (entities.Variable, error) {
+	parts := strings.Split(varDef, ":")
+	if len(parts) < 2 {
+		return entities.Variable{}, fmt.Errorf("format should be name:type:title:required:default")
 	}
 
-	// Create new project
-	return manager.Projects.Create(
-		projectName,
-		fmt.Sprintf("Project initialized for %s", projectName),
-		schemaID,
-	)
+	variable := entities.Variable{
+		Name: parts[0],
+		Type: parts[1],
+	}
+
+	if len(parts) > 2 {
+		variable.Title = parts[2]
+	}
+	if len(parts) > 3 {
+		variable.Required = parts[3] == "true"
+	}
+	if len(parts) > 4 {
+		variable.Default = parts[4]
+	}
+
+	return variable, nil
 }
 
-// createEEFile creates the .ee configuration file
-func (c *InitCommand) createEEFile(filename, projectName, remote string) error {
-	content := fmt.Sprintf("project: %s\n", projectName)
-	if remote != "" {
-		content += fmt.Sprintf("remote: %s\n", remote)
+// createSampleEnvFiles creates sample .env files for each environment
+func (c *InitCommand) createSampleEnvFiles(
+	projectConfig *parser.ProjectConfig,
+	manager *manager.Manager,
+) error {
+	for envName, envDef := range projectConfig.Environments {
+		// Find .env file references in the environment sheets
+		for _, sheet := range envDef.Sheets {
+			if sheetStr, ok := sheet.(string); ok &&
+				(sheetStr == ".env" || sheetStr == ".env."+envName) {
+				envFile := sheetStr
+				if envFile == ".env" {
+					envFile = ".env." + envName
+				}
+
+				// Create the .env file if it doesn't exist
+				if _, err := os.Stat(envFile); os.IsNotExist(err) {
+					err := c.createSampleEnvFile(envFile, projectConfig.Schema, manager)
+					if err != nil {
+						return fmt.Errorf("failed to create %s: %w", envFile, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// createSampleEnvFile creates a sample .env file with schema annotations
+func (c *InitCommand) createSampleEnvFile(
+	filename string,
+	schema parser.ProjectConfigSchema,
+	manager *manager.Manager,
+) error {
+	content := fmt.Sprintf("# %s environment configuration\n", filename)
+	content += "# Edit the values below according to your needs\n\n"
+
+	var variables map[string]entities.Variable
+
+	// Handle schema reference vs inline schema
+	if schema.Ref != "" {
+		content += fmt.Sprintf("# schema: %s\n\n", schema.Ref)
+
+		// Try to load the referenced schema
+		loadedVars, err := c.loadSchemaVariables(schema.Ref, manager)
+		if err != nil {
+			return fmt.Errorf("failed to load schema '%s': %w", schema.Ref, err)
+		}
+		variables = loadedVars
+	} else {
+		content += "# schema: inline\n\n"
+		variables = schema.Variables
+	}
+
+	// Add sample variables
+	if len(variables) > 0 {
+		for _, variable := range variables {
+			// Add variable annotations
+			if variable.Title != "" {
+				content += fmt.Sprintf("# title: %s\n", variable.Title)
+			}
+			if variable.Type != "string" {
+				content += fmt.Sprintf("# type: %s\n", variable.Type)
+			}
+			if variable.Default != "" {
+				content += fmt.Sprintf("# default: %s\n", variable.Default)
+			}
+			if variable.Required {
+				content += "# required: true\n"
+			}
+
+			// Add the variable with default value
+			value := variable.Default
+			if value == "" {
+				value = "" // Empty value for user to fill in
+			}
+			content += fmt.Sprintf("%s=%s\n\n", variable.Name, value)
+		}
+	} else {
+		content += "# No variables defined in schema\n"
+		content += "# Add your environment variables below\n\n"
 	}
 
 	return os.WriteFile(filename, []byte(content), 0o644)
 }
 
+// loadSchemaVariables loads variables from a schema reference using the schema manager
+func (c *InitCommand) loadSchemaVariables(
+	schemaRef string,
+	manager *manager.Manager,
+) (map[string]entities.Variable, error) {
+	// Use the schema manager to load the schema by reference
+	schema, err := manager.Schemas.GetByReference(schemaRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert schema variables to map
+	variables := make(map[string]entities.Variable)
+	for _, variable := range schema.Variables {
+		variables[variable.Name] = variable
+	}
+	return variables, nil
+}
+
 // GetCurrentProject reads the project name from .ee file in current directory
 func GetCurrentProject() (string, error) {
-	eeFile := ".ee"
-
-	// Check if .ee file exists
-	if _, err := os.Stat(eeFile); os.IsNotExist(err) {
-		return "", fmt.Errorf(".ee file not found in current directory")
-	}
-
-	// Read .ee file
-	content, err := os.ReadFile(eeFile)
+	projectConfig, err := parser.LoadProjectConfig()
 	if err != nil {
-		return "", fmt.Errorf("failed to read .ee file: %w", err)
+		return "", err
 	}
-
-	// Parse .ee file (simple key: value format)
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-
-			if key == "project" {
-				return value, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no project specified in .ee file")
+	return projectConfig.Project, nil
 }
 
 // GetCurrentRemote reads the remote URL from .ee file in current directory
 func GetCurrentRemote() (string, error) {
-	eeFile := ".ee"
-
-	// Check if .ee file exists
-	if _, err := os.Stat(eeFile); os.IsNotExist(err) {
-		return "", fmt.Errorf(".ee file not found in current directory")
-	}
-
-	// Read .ee file
-	content, err := os.ReadFile(eeFile)
+	projectConfig, err := parser.LoadProjectConfig()
 	if err != nil {
-		return "", fmt.Errorf("failed to read .ee file: %w", err)
+		return "", err
 	}
-
-	// Parse .ee file (simple key: value format)
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-
-			if key == "remote" {
-				return value, nil
-			}
-		}
-	}
-
-	return "", nil // Remote is optional
+	return projectConfig.Remote, nil
 }

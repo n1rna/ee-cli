@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/api"
-	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
 )
 
@@ -21,7 +21,7 @@ func NewPushCommand(groupId string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Push local entities to remote",
-		Long: `Push local schemas, projects, and config sheets to the remote server.
+		Long: `Push local schemas and config sheets to the remote server.
 
 This command synchronizes your local entities with the remote server, uploading
 any changes or new entities that exist locally but not remotely.
@@ -33,9 +33,6 @@ Examples:
   # Push only schemas
   ee push --schemas
 
-  # Push only projects
-  ee push --projects
-
   # Push only config sheets
   ee push --sheets
 
@@ -46,7 +43,6 @@ Examples:
 	}
 
 	cmd.Flags().Bool("schemas", false, "Push only schemas")
-	cmd.Flags().Bool("projects", false, "Push only projects")
 	cmd.Flags().Bool("sheets", false, "Push only config sheets")
 	cmd.Flags().Bool("dry-run", false, "Show what would be pushed without actually pushing")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
@@ -83,12 +79,11 @@ func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
 
 	// Get flags
 	schemasOnly, _ := cmd.Flags().GetBool("schemas")
-	projectsOnly, _ := cmd.Flags().GetBool("projects")
 	sheetsOnly, _ := cmd.Flags().GetBool("sheets")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	// If no specific flags, push everything
-	pushAll := !schemasOnly && !projectsOnly && !sheetsOnly
+	pushAll := !schemasOnly && !sheetsOnly
 
 	if dryRun {
 		printer.Info("Dry run mode - showing what would be pushed:")
@@ -98,13 +93,6 @@ func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
 	if pushAll || schemasOnly {
 		if err := c.pushSchemas(manager, client, printer, dryRun); err != nil {
 			return fmt.Errorf("failed to push schemas: %w", err)
-		}
-	}
-
-	// Push projects
-	if pushAll || projectsOnly {
-		if err := c.pushProjects(manager, client, printer, dryRun); err != nil {
-			return fmt.Errorf("failed to push projects: %w", err)
 		}
 	}
 
@@ -126,7 +114,7 @@ func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
 
 // pushSchemas pushes all local schemas to remote
 func (c *PushCommand) pushSchemas(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,
@@ -166,51 +154,9 @@ func (c *PushCommand) pushSchemas(
 	return nil
 }
 
-// pushProjects pushes all local projects to remote
-func (c *PushCommand) pushProjects(
-	manager *entities.Manager,
-	client *api.Client,
-	printer *output.Printer,
-	dryRun bool,
-) error {
-	summaries, err := manager.Projects.List()
-	if err != nil {
-		return fmt.Errorf("failed to list projects: %w", err)
-	}
-
-	if len(summaries) == 0 {
-		printer.Info("No projects to push")
-		return nil
-	}
-
-	printer.Info(fmt.Sprintf("Pushing %d projects...", len(summaries)))
-
-	for _, summary := range summaries {
-		project, err := manager.Projects.GetByID(summary.Name) // summary.Name is UUID in index
-		if err != nil {
-			printer.Warning(fmt.Sprintf("Failed to load project %s: %v", summary.Name, err))
-			continue
-		}
-
-		if dryRun {
-			printer.Info(fmt.Sprintf("  Would push project: %s (%s)", project.Name, project.ID))
-		} else {
-			// Convert to API type
-			apiProject := api.ProjectToAPI(project)
-			if _, err := client.PushProject(apiProject); err != nil {
-				printer.Warning(fmt.Sprintf("Failed to push project %s: %v", project.Name, err))
-				continue
-			}
-			printer.Info(fmt.Sprintf("  Pushed project: %s", project.Name))
-		}
-	}
-
-	return nil
-}
-
 // pushConfigSheets pushes all local config sheets to remote
 func (c *PushCommand) pushConfigSheets(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,

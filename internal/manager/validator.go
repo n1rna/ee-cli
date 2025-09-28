@@ -1,9 +1,11 @@
-// Package entities provides validation logic for ee entities.
-package entities
+// Package manager provides validation logic for ee manager.
+package manager
 
 import (
 	"fmt"
 	"regexp"
+
+	"github.com/n1rna/ee-cli/internal/entities"
 )
 
 // Validator handles schema validation logic with direct access to entity managers
@@ -21,7 +23,7 @@ func NewValidator(manager *Manager) *Validator {
 }
 
 // validateVariable checks if a variable definition is valid
-func (v *Validator) validateVariable(variable *Variable) error {
+func (v *Validator) validateVariable(variable *entities.Variable) error {
 	if variable.Name == "" {
 		return fmt.Errorf("variable name cannot be empty")
 	}
@@ -56,7 +58,7 @@ func (v *Validator) validateVariable(variable *Variable) error {
 }
 
 // ValidateValue checks if a value matches the variable's constraints
-func (v *Validator) ValidateValue(variable *Variable, value string) error {
+func (v *Validator) ValidateValue(variable *entities.Variable, value string) error {
 	if value == "" && variable.Required {
 		return fmt.Errorf("value is required")
 	}
@@ -87,16 +89,19 @@ func (v *Validator) ValidateValue(variable *Variable, value string) error {
 }
 
 // resolveSchema resolves a schema with all its inherited variables
-func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Schema, error) {
+func (v *Validator) resolveSchema(
+	schema *entities.Schema,
+	visited map[string]bool,
+) (*entities.Schema, error) {
 	if visited[schema.ID] {
 		return nil, fmt.Errorf("circular dependency detected in schema %s", schema.Name)
 	}
 	visited[schema.ID] = true
 
-	resolved := &Schema{
+	resolved := &entities.Schema{
 		Entity:    schema.Entity,
 		Extends:   schema.Extends,
-		Variables: make([]Variable, 0),
+		Variables: make([]entities.Variable, 0),
 	}
 
 	// Resolve extended schemas first
@@ -117,7 +122,7 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 	}
 
 	// Add/override with current schema's variables
-	variableMap := make(map[string]Variable)
+	variableMap := make(map[string]entities.Variable)
 	for _, v := range resolved.Variables {
 		variableMap[v.Name] = v
 	}
@@ -126,7 +131,7 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 	}
 
 	// Convert back to slice
-	resolved.Variables = make([]Variable, 0, len(variableMap))
+	resolved.Variables = make([]entities.Variable, 0, len(variableMap))
 	for _, v := range variableMap {
 		resolved.Variables = append(resolved.Variables, v)
 	}
@@ -136,14 +141,14 @@ func (v *Validator) resolveSchema(schema *Schema, visited map[string]bool) (*Sch
 
 // resolveConfigSheet resolves a config sheet with all inherited values
 func (v *Validator) resolveConfigSheet(
-	sheet *ConfigSheet, visited map[string]bool,
-) (*ConfigSheet, error) {
+	sheet *entities.ConfigSheet, visited map[string]bool,
+) (*entities.ConfigSheet, error) {
 	if visited[sheet.ID] {
 		return nil, fmt.Errorf("circular dependency detected in config sheet %s", sheet.Name)
 	}
 	visited[sheet.ID] = true
 
-	resolved := &ConfigSheet{
+	resolved := &entities.ConfigSheet{
 		Entity:      sheet.Entity,
 		Schema:      sheet.Schema,
 		Project:     sheet.Project,
@@ -184,7 +189,7 @@ func (v *Validator) resolveConfigSheet(
 }
 
 // ValidateSchema checks if a schema definition is valid
-func (v *Validator) ValidateSchema(schema *Schema) error {
+func (v *Validator) ValidateSchema(schema *entities.Schema) error {
 	if schema.Name == "" {
 		return fmt.Errorf("schema name cannot be empty")
 	}
@@ -206,13 +211,13 @@ func (v *Validator) ValidateSchema(schema *Schema) error {
 }
 
 // ValidateConfigSheet validates a config sheet against its schema
-func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
+func (v *Validator) ValidateConfigSheet(sheet *entities.ConfigSheet) error {
 	if sheet.Name == "" {
 		return fmt.Errorf("config sheet name cannot be empty")
 	}
 
 	// Load schema based on reference type
-	var schema *Schema
+	var schema *entities.Schema
 	var err error
 
 	if sheet.Schema.IsReference() {
@@ -223,11 +228,11 @@ func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
 		}
 	} else if sheet.Schema.IsInline() {
 		// Create temporary schema from inline definition
-		variables := make([]Variable, 0, len(sheet.Schema.Variables))
+		variables := make([]entities.Variable, 0, len(sheet.Schema.Variables))
 		for _, variable := range sheet.Schema.Variables {
 			variables = append(variables, variable)
 		}
-		schema = NewSchema("inline", "inline schema", variables, nil)
+		schema = entities.NewSchema("inline", "inline schema", variables, nil)
 	} else {
 		return fmt.Errorf("config sheet must have either schema reference or inline schema")
 	}

@@ -57,43 +57,6 @@ func SchemaFromAPI(apiSchema *Schema) *entities.Schema {
 	}
 }
 
-// ProjectToAPI converts a local Project to API Project
-func ProjectToAPI(localProject *entities.Project) *Project {
-	var defaultSchemaGUID *string
-	if localProject.Schema != "" {
-		defaultSchemaGUID = &localProject.Schema
-	}
-
-	return &Project{
-		GUID:              localProject.ID,
-		Name:              localProject.Name,
-		Description:       localProject.Description,
-		DefaultSchemaGUID: defaultSchemaGUID,
-		CreatedAt:         APITime(localProject.CreatedAt),
-		UpdatedAt:         APITime(localProject.UpdatedAt),
-	}
-}
-
-// ProjectFromAPI converts an API Project to local Project
-func ProjectFromAPI(apiProject *Project) *entities.Project {
-	var schemaID string
-	if apiProject.DefaultSchemaGUID != nil {
-		schemaID = *apiProject.DefaultSchemaGUID
-	}
-
-	return &entities.Project{
-		Entity: entities.Entity{
-			ID:          apiProject.GUID,
-			Name:        apiProject.Name,
-			Description: apiProject.Description,
-			CreatedAt:   time.Time(apiProject.CreatedAt),
-			UpdatedAt:   time.Time(apiProject.UpdatedAt),
-		},
-		Schema:       schemaID,
-		Environments: make(map[string]entities.Environment), // Empty environments map
-	}
-}
-
 // ConfigSheetToAPI converts a local ConfigSheet to API ConfigSheet
 func ConfigSheetToAPI(localSheet *entities.ConfigSheet) *ConfigSheet {
 	// Extract schema GUID from reference

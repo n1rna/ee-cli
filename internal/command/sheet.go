@@ -60,8 +60,6 @@ Examples:
   # Create standalone config sheet
   ee sheet create my-config --schema web-service
 
-  # Create config sheet for project environment
-  ee sheet create my-app-dev --project my-app --environment development --schema web-service
 
   # Create interactively
   ee sheet create my-config`,
@@ -70,8 +68,6 @@ Examples:
 	}
 
 	cmd.Flags().String("schema", "", "Schema to use for validation")
-	cmd.Flags().String("project", "", "Project to associate this sheet with")
-	cmd.Flags().String("environment", "", "Environment within the project")
 	cmd.Flags().String("description", "", "Sheet description")
 	cmd.Flags().
 		StringToString("value", map[string]string{}, "Set variable values (format: --value KEY=VALUE)")
@@ -103,8 +99,6 @@ func (c *SheetCommand) newListCommand() *cobra.Command {
 		RunE:  c.runList,
 	}
 
-	cmd.Flags().String("project", "", "Filter by project")
-	cmd.Flags().String("environment", "", "Filter by environment")
 	cmd.Flags().Bool("standalone", false, "Show only standalone sheets")
 	cmd.Flags().String("format", "table", "Output format (table, json)")
 
@@ -206,8 +200,6 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 	sheetName := args[0]
 	description, _ := cmd.Flags().GetString("description")
 	schemaName, _ := cmd.Flags().GetString("schema")
-	projectName, _ := cmd.Flags().GetString("project")
-	envName, _ := cmd.Flags().GetString("environment")
 	values, _ := cmd.Flags().GetStringToString("value")
 	importFile, _ := cmd.Flags().GetString("import")
 
@@ -234,66 +226,18 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 		schemaRef.Ref = "#/schemas/" + s.ID
 	}
 
-	var cs *entities.ConfigSheet
+	// Create standalone config sheet
+	cs := entities.NewConfigSheet(sheetName, description, schemaRef, values)
 
-	if projectName != "" {
-		// Create project-associated config sheet
-		if envName == "" {
-			return fmt.Errorf("environment name is required when project is specified")
-		}
+	// Validate using manager's validator
+	validator := manager.GetValidator()
+	if err := validator.ValidateConfigSheet(cs); err != nil {
+		return fmt.Errorf("config sheet validation failed: %w", err)
+	}
 
-		p, err := manager.Projects.Get(projectName)
-		if err != nil {
-			return fmt.Errorf("project '%s' not found: %w", projectName, err)
-		}
-
-		// Create config sheet without validation first
-		cs = entities.NewConfigSheetForProject(
-			sheetName,
-			description,
-			schemaRef,
-			p.ID,
-			envName,
-			values,
-		)
-
-		// Validate using manager's validator
-		validator := manager.GetValidator()
-		if err := validator.ValidateConfigSheet(cs); err != nil {
-			return fmt.Errorf("config sheet validation failed: %w", err)
-		}
-
-		// Save the validated config sheet
-		if err := manager.ConfigSheets.Save(cs); err != nil {
-			return fmt.Errorf("failed to save config sheet: %w", err)
-		}
-
-		// Add environment to project if it doesn't exist
-		if _, exists := p.Environments[envName]; !exists {
-			_, err = manager.Projects.AddEnvironment(projectName, envName)
-			if err != nil {
-				printer.Warning(fmt.Sprintf("Failed to add environment to project: %v", err))
-			}
-		}
-	} else {
-		// Create standalone config sheet
-		if envName != "" {
-			return fmt.Errorf("environment can only be specified with a project")
-		}
-
-		// Create config sheet without validation first
-		cs = entities.NewConfigSheet(sheetName, description, schemaRef, values)
-
-		// Validate using manager's validator
-		validator := manager.GetValidator()
-		if err := validator.ValidateConfigSheet(cs); err != nil {
-			return fmt.Errorf("config sheet validation failed: %w", err)
-		}
-
-		// Save the validated config sheet
-		if err := manager.ConfigSheets.Save(cs); err != nil {
-			return fmt.Errorf("failed to save config sheet: %w", err)
-		}
+	// Save the validated config sheet
+	if err := manager.ConfigSheets.Save(cs); err != nil {
+		return fmt.Errorf("failed to save config sheet: %w", err)
 	}
 
 	printer.Success(fmt.Sprintf("Successfully created config sheet '%s'", sheetName))
@@ -351,19 +295,6 @@ func (c *SheetCommand) runList(cmd *cobra.Command, args []string) error {
 
 	// Build filters
 	filters := make(map[string]string)
-	if projectName, _ := cmd.Flags().GetString("project"); projectName != "" {
-		// Resolve project name to UUID
-		p, err := manager.Projects.Get(projectName)
-		if err != nil {
-			return fmt.Errorf("project '%s' not found: %w", projectName, err)
-		}
-		filters["project"] = p.ID
-	}
-
-	if envName, _ := cmd.Flags().GetString("environment"); envName != "" {
-		filters["environment"] = envName
-	}
-
 	if standalone, _ := cmd.Flags().GetBool("standalone"); standalone {
 		filters["standalone"] = "true"
 	}

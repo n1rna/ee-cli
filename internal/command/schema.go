@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
 )
 
@@ -166,7 +167,7 @@ func (c *SchemaCommand) runCreate(cmd *cobra.Command, args []string) error {
 }
 
 func (c *SchemaCommand) createSchemaInteractively(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	printer *output.Printer,
 	name string,
 ) error {
@@ -271,7 +272,7 @@ func (c *SchemaCommand) createSchemaInteractively(
 
 // createSchemaFromCLI creates a schema from CLI flags
 func (c *SchemaCommand) createSchemaFromCLI(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	printer *output.Printer,
 	name, description string,
 	variableSpecs []string,
@@ -374,7 +375,7 @@ func (c *SchemaCommand) parseVariableSpec(spec string) (entities.Variable, error
 }
 
 func (c *SchemaCommand) importSchema(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	printer *output.Printer,
 	name string,
 	filename string,

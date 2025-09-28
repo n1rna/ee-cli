@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/util"
 )
 
 // RootCommand handles the root ee command functionality
@@ -36,6 +37,7 @@ When run without subcommands, displays all environment variables in the current 
 		"Filter environment variables using wildcard patterns separated by comma, pipe, or slash "+
 			"(e.g., 'PATH*,USER*', '*_URL|*_KEY', '!CLAUDE*/NODE*')")
 	cmd.Flags().StringP("format", "f", "env", "Output format (env, json, dotenv)")
+	cmd.Flags().BoolP("mask", "m", false, "Mask sensitive environment variable values")
 
 	return cmd
 }
@@ -45,6 +47,7 @@ func (c *RootCommand) Run(cmd *cobra.Command, args []string) error {
 	// Get flags
 	filter, _ := cmd.Flags().GetString("filter")
 	format, _ := cmd.Flags().GetString("format")
+	mask, _ := cmd.Flags().GetBool("mask")
 
 	// Get all environment variables
 	envVars := os.Environ()
@@ -67,6 +70,11 @@ func (c *RootCommand) Run(cmd *cobra.Command, args []string) error {
 				if !matched {
 					continue
 				}
+			}
+
+			// Apply masking if requested
+			if mask {
+				value = util.MaskSensitiveValue(key, value)
 			}
 
 			envMap[key] = value

@@ -12,8 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/util"
 )
 
 // ApplyCommand handles the ee apply command
@@ -47,9 +48,6 @@ Examples:
   # Apply .env file with absolute path
   ee apply /path/to/my-app/.env -- npm start
 
-  # Apply environment from specific project
-  ee apply development --project my-api
-
   # Apply standalone config sheet
   ee apply my-config --standalone
 
@@ -61,7 +59,6 @@ Examples:
 		GroupID: groupId,
 	}
 
-	cmd.Flags().String("project", "", "Project name (auto-detected from .ee file if not specified)")
 	cmd.Flags().BoolP("standalone", "s", false,
 		"Apply standalone config sheet instead of project environment")
 	cmd.Flags().BoolP("dry-run", "d", false, "Show what would be applied without executing")
@@ -73,20 +70,19 @@ Examples:
 
 // Run executes the apply command
 func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
-	// Get manager from context
-	manager := GetEntityManager(cmd.Context())
-	if manager == nil {
-		return fmt.Errorf("entity manager not initialized")
-	}
-
 	// Set up printer
 	format, _ := cmd.Flags().GetString("format")
 	quiet, _ := cmd.Flags().GetBool("quiet")
 	printer := output.NewPrinter(output.Format(format), quiet)
 
+	// Get command context from the global context
+	context, err := RequireCommandContext(cmd.Context())
+	if err != nil {
+		return err
+	}
+
 	standalone, _ := cmd.Flags().GetBool("standalone")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	projectName, _ := cmd.Flags().GetString("project")
 
 	envOrSheetName := args[0]
 	var commandArgs []string
@@ -102,22 +98,20 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	var values map[string]string
-	var err error
 
 	// Detect if the argument is a file path or environment name
 	if c.isFilePath(envOrSheetName) {
-		// Apply .env file
+		// Apply .env file directly
 		values, err = c.applyEnvFile(envOrSheetName)
 		if err != nil {
 			return err
 		}
 		if !quiet {
-			absPath, _ := filepath.Abs(envOrSheetName)
-			printer.Info(fmt.Sprintf("Applying .env file: %s", absPath))
+			printer.Info(fmt.Sprintf("Applying .env file: %s", envOrSheetName))
 		}
 	} else if standalone {
 		// Apply standalone config sheet
-		values, err = c.applyStandaloneSheet(manager, envOrSheetName)
+		values, err = c.applyStandaloneSheet(context.Manager, envOrSheetName)
 		if err != nil {
 			return err
 		}
@@ -125,17 +119,13 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 			printer.Info(fmt.Sprintf("Applying standalone config sheet: %s", envOrSheetName))
 		}
 	} else {
-		// Apply project environment
-		values, err = c.applyProjectEnvironment(manager, projectName, envOrSheetName)
+		// Apply project environment using new .ee file system
+		values, err = c.applyProjectEnvironment(context, envOrSheetName)
 		if err != nil {
 			return err
 		}
 		if !quiet {
-			actualProject := projectName
-			if actualProject == "" {
-				actualProject, _ = GetCurrentProject()
-			}
-			printer.Info(fmt.Sprintf("Applying environment '%s' from project '%s'", envOrSheetName, actualProject))
+			printer.Info(fmt.Sprintf("Applying environment '%s'", envOrSheetName))
 		}
 	}
 
@@ -166,7 +156,7 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 
 // applyStandaloneSheet applies a standalone config sheet
 func (c *ApplyCommand) applyStandaloneSheet(
-	manager *entities.Manager,
+	manager *manager.Manager,
 	sheetName string,
 ) (map[string]string, error) {
 	cs, err := manager.ConfigSheets.Get(sheetName)
@@ -185,47 +175,39 @@ func (c *ApplyCommand) applyStandaloneSheet(
 	return cs.Values, nil
 }
 
-// applyProjectEnvironment applies a project environment
+// applyProjectEnvironment applies a project environment using the new .ee file system
 func (c *ApplyCommand) applyProjectEnvironment(
-	manager *entities.Manager,
-	projectName, envName string,
+	context *util.CommandContext,
+	envName string,
 ) (map[string]string, error) {
-	// If no project name specified, try to get from .ee file
-	if projectName == "" {
-		var err error
-		projectName, err = GetCurrentProject()
-		if err != nil {
-			return nil, fmt.Errorf("no project specified and no .ee file found: %w", err)
-		}
-		if projectName == "" {
-			return nil, fmt.Errorf("no project specified and .ee file is empty")
-		}
+	// Check if we're in a project context
+	if !context.IsInProject {
+		return nil, fmt.Errorf("no .ee file found - not in a project context")
 	}
 
-	// Load project
-	p, err := manager.Projects.Get(projectName)
+	// Validate that the environment exists
+	if !context.HasEnvironment(envName) {
+		return nil, fmt.Errorf("environment '%s' not found in project", envName)
+	}
+
+	// Get the environment definition
+	envDef, err := context.GetEnvironment(envName)
 	if err != nil {
-		return nil, fmt.Errorf("project '%s' not found: %w", projectName, err)
+		return nil, fmt.Errorf("failed to get environment definition: %w", err)
 	}
 
-	// Check if environment exists in project
-	if _, exists := p.Environments[envName]; !exists {
-		return nil, fmt.Errorf("environment '%s' not found in project '%s'", envName, projectName)
-	}
-
-	// Find config sheet for this environment
-	configSheetName := p.GetConfigSheetName(envName)
-	cs, err := manager.ConfigSheets.Get(configSheetName)
+	// Create config sheet merger and merge the environment
+	merger := util.NewConfigSheetMerger(context.Manager)
+	values, err := merger.MergeEnvironment(envDef)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"config sheet '%s' not found for environment '%s': %w",
-			configSheetName,
+			"failed to merge config sheets for environment '%s': %w",
 			envName,
 			err,
 		)
 	}
 
-	return cs.Values, nil
+	return values, nil
 }
 
 // runCommandWithEnvironment runs a command with the specified environment variables
