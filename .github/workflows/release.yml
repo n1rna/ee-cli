@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
 
     - name: Get version
       id: version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
     - name: Build all platforms
       run: |
@@ -61,7 +61,7 @@ jobs:
         echo "" >> release_body.txt
         echo "### Quick Install (Linux/macOS)" >> release_body.txt
         echo '```bash' >> release_body.txt
-        echo 'curl -sSfL https://raw.githubusercontent.com/n1rna/ee-cli/main/install.sh | sh' >> release_body.txt
+        echo 'curl -sSfL https://ee.n1rna.net/install.sh | sh' >> release_body.txt
         echo '```' >> release_body.txt
         echo "" >> release_body.txt
         echo "### Manual Download" >> release_body.txt
@@ -75,7 +75,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        name: Release v${{ steps.version.outputs.VERSION }}
+        name: Release ${{ steps.version.outputs.VERSION }}
         body_path: release_body.txt
         files: |
           build/ee-linux-amd64
