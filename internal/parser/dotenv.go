@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // AnnotatedDotEnvParser parses .env files with schema annotations in comments
@@ -90,7 +91,7 @@ func (p *AnnotatedDotEnvParser) ParseFile(path string) (map[string]string, entit
 	}
 
 	schema := entities.Schema{
-		Entity:    entities.NewEntity("", "Schema extracted from .env file"),
+		Entity:    storage.NewEntity("", "Schema extracted from .env file"),
 		Variables: varSlice,
 	}
 

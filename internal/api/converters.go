@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // SchemaToAPI converts a local Schema to API Schema
@@ -45,7 +46,7 @@ func SchemaFromAPI(apiSchema *Schema) *entities.Schema {
 	}
 
 	return &entities.Schema{
-		Entity: entities.Entity{
+		Entity: storage.Entity{
 			ID:          apiSchema.GUID,
 			Name:        apiSchema.Name,
 			Description: apiSchema.Description,
@@ -74,7 +75,6 @@ func ConfigSheetToAPI(localSheet *entities.ConfigSheet) *ConfigSheet {
 		GUID:        localSheet.ID,
 		Name:        localSheet.Name,
 		Description: localSheet.Description,
-		ProjectGUID: localSheet.Project,
 		SchemaGUID:  schemaGUID,
 		Variables:   localSheet.Values,
 		IsActive:    true, // Default to active
@@ -92,16 +92,14 @@ func ConfigSheetFromAPI(apiSheet *ConfigSheet) *entities.ConfigSheet {
 	}
 
 	return &entities.ConfigSheet{
-		Entity: entities.Entity{
+		Entity: storage.Entity{
 			ID:          apiSheet.GUID,
 			Name:        apiSheet.Name,
 			Description: apiSheet.Description,
 			CreatedAt:   time.Time(apiSheet.CreatedAt),
 			UpdatedAt:   time.Time(apiSheet.UpdatedAt),
 		},
-		Schema:      schemaRef,
-		Project:     apiSheet.ProjectGUID,
-		Environment: "", // Not stored in API model, would need to be inferred
-		Values:      apiSheet.Variables,
+		Schema: schemaRef,
+		Values: apiSheet.Variables,
 	}
 }

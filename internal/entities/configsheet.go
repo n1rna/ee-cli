@@ -5,16 +5,17 @@ import (
 	"fmt"
 
 	"github.com/n1rna/ee-cli/internal/config"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // ConfigSheetManager handles all config sheet-related operations
 type ConfigSheetManager struct {
-	storage *baseStorage
+	storage *storage.BaseStorage
 }
 
 // NewConfigSheetManager creates a new config sheet manager
 func NewConfigSheetManager(cfg *config.Config) (*ConfigSheetManager, error) {
-	storage, err := newBaseStorage(cfg, "sheets")
+	storage, err := storage.NewBaseStorage(cfg, "sheets")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize config sheet storage: %w", err)
 	}
@@ -46,38 +47,15 @@ func (csm *ConfigSheetManager) Create(
 	return cs, nil
 }
 
-// CreateForProject creates a new config sheet for a project environment
-func (csm *ConfigSheetManager) CreateForProject(
-	name, description string,
-	schemaRef SchemaReference,
-	projectUUID, envName string,
-	values map[string]string,
-) (*ConfigSheet, error) {
-	// Check if config sheet with same name already exists
-	if _, err := csm.GetByName(name); err == nil {
-		return nil, fmt.Errorf("config sheet with name '%s' already exists", name)
-	}
-
-	// Create new config sheet for project
-	cs := NewConfigSheetForProject(name, description, schemaRef, projectUUID, envName, values)
-
-	// Save config sheet
-	if err := csm.Save(cs); err != nil {
-		return nil, fmt.Errorf("failed to save config sheet: %w", err)
-	}
-
-	return cs, nil
-}
-
 // Save saves a config sheet to storage
 func (csm *ConfigSheetManager) Save(cs *ConfigSheet) error {
 	// Save entity file
-	if err := csm.storage.saveEntity(cs.ID, cs); err != nil {
+	if err := csm.storage.SaveEntity(cs.Entity.ID, cs); err != nil {
 		return fmt.Errorf("failed to save config sheet file: %w", err)
 	}
 
 	// Update index
-	if err := csm.storage.updateIndex(cs.Entity); err != nil {
+	if err := csm.storage.UpdateIndex(cs.Entity); err != nil {
 		return fmt.Errorf("failed to update config sheet index: %w", err)
 	}
 
@@ -87,7 +65,7 @@ func (csm *ConfigSheetManager) Save(cs *ConfigSheet) error {
 // GetByID loads a config sheet by UUID
 func (csm *ConfigSheetManager) GetByID(uuid string) (*ConfigSheet, error) {
 	var cs ConfigSheet
-	if err := csm.storage.loadEntity(uuid, &cs); err != nil {
+	if err := csm.storage.LoadEntity(uuid, &cs); err != nil {
 		return nil, fmt.Errorf("failed to load config sheet %s: %w", uuid, err)
 	}
 	return &cs, nil
@@ -95,7 +73,7 @@ func (csm *ConfigSheetManager) GetByID(uuid string) (*ConfigSheet, error) {
 
 // GetByName loads a config sheet by name
 func (csm *ConfigSheetManager) GetByName(name string) (*ConfigSheet, error) {
-	uuid, err := csm.storage.resolveUUID(name)
+	uuid, err := csm.storage.ResolveUUID(name)
 	if err != nil {
 		return nil, fmt.Errorf("config sheet '%s' not found: %w", name, err)
 	}
@@ -115,18 +93,18 @@ func (csm *ConfigSheetManager) Get(nameOrUUID string) (*ConfigSheet, error) {
 // Delete removes a config sheet
 func (csm *ConfigSheetManager) Delete(nameOrUUID string) error {
 	// Resolve to UUID
-	uuid, err := csm.storage.resolveUUID(nameOrUUID)
+	uuid, err := csm.storage.ResolveUUID(nameOrUUID)
 	if err != nil {
 		return fmt.Errorf("config sheet '%s' not found: %w", nameOrUUID, err)
 	}
 
 	// Remove entity file
-	if err := csm.storage.removeEntity(uuid); err != nil {
+	if err := csm.storage.RemoveEntity(uuid); err != nil {
 		return fmt.Errorf("failed to remove config sheet file: %w", err)
 	}
 
 	// Remove from index
-	if err := csm.storage.removeFromIndex(nameOrUUID); err != nil {
+	if err := csm.storage.RemoveFromIndex(nameOrUUID); err != nil {
 		return fmt.Errorf("failed to remove from config sheet index: %w", err)
 	}
 
@@ -134,12 +112,12 @@ func (csm *ConfigSheetManager) Delete(nameOrUUID string) error {
 }
 
 // List returns all config sheet summaries
-func (csm *ConfigSheetManager) List() ([]EntitySummary, error) {
-	return csm.storage.listSummaries()
+func (csm *ConfigSheetManager) List() ([]storage.EntitySummary, error) {
+	return csm.storage.ListSummaries()
 }
 
 // ListWithFilters returns config sheet summaries matching the given filters
-func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]EntitySummary, error) {
+func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]storage.EntitySummary, error) {
 	allSummaries, err := csm.List()
 	if err != nil {
 		return nil, err
@@ -150,39 +128,16 @@ func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]Ent
 		return allSummaries, nil
 	}
 
-	var filtered []EntitySummary
+	var filtered []storage.EntitySummary
 
 	for _, summary := range allSummaries {
 		// Load full config sheet to check filters
-		cs, err := csm.GetByID(summary.Name) // Note: summary.Name is actually UUID in the index
+		_, err := csm.GetByID(summary.Name) // Note: summary.Name is actually UUID in the index
 		if err != nil {
 			continue // Skip if we can't load it
 		}
 
 		matches := true
-
-		// Check project filter
-		if projectFilter, ok := filters["project"]; ok {
-			if cs.Project != projectFilter {
-				matches = false
-			}
-		}
-
-		// Check environment filter
-		if envFilter, ok := filters["environment"]; ok {
-			if cs.Environment != envFilter {
-				matches = false
-			}
-		}
-
-		// Check standalone filter
-		if standaloneFilter, ok := filters["standalone"]; ok {
-			isStandalone := cs.IsStandalone()
-			if (standaloneFilter == "true" && !isStandalone) ||
-				(standaloneFilter == "false" && isStandalone) {
-				matches = false
-			}
-		}
 
 		if matches {
 			filtered = append(filtered, summary)
@@ -193,12 +148,12 @@ func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]Ent
 }
 
 // ListStandalone returns only standalone config sheets (not associated with projects)
-func (csm *ConfigSheetManager) ListStandalone() ([]EntitySummary, error) {
+func (csm *ConfigSheetManager) ListStandalone() ([]storage.EntitySummary, error) {
 	return csm.ListWithFilters(map[string]string{"standalone": "true"})
 }
 
 // ListByProject returns config sheets associated with a specific project
-func (csm *ConfigSheetManager) ListByProject(projectUUID string) ([]EntitySummary, error) {
+func (csm *ConfigSheetManager) ListByProject(projectUUID string) ([]storage.EntitySummary, error) {
 	return csm.ListWithFilters(map[string]string{"project": projectUUID})
 }
 

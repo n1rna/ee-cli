@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/api"
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 )
 
@@ -114,7 +114,7 @@ func (c *PullCommand) Run(cmd *cobra.Command, args []string) error {
 
 // pullSchemas pulls all remote schemas to local
 func (c *PullCommand) pullSchemas(
-	manager *manager.Manager,
+	manager *entities.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,
@@ -187,7 +187,7 @@ func (c *PullCommand) pullSchemas(
 
 // pullConfigSheets pulls all remote config sheets to local
 func (c *PullCommand) pullConfigSheets(
-	manager *manager.Manager,
+	manager *entities.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,

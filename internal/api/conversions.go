@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // ConvertSchemaFromAPI converts API Schema to local entities.Schema
@@ -14,7 +15,7 @@ func ConvertSchemaFromAPI(apiSchema *Schema) *entities.Schema {
 	}
 
 	localSchema := &entities.Schema{
-		Entity: entities.Entity{
+		Entity: storage.Entity{
 			ID:          apiSchema.GUID, // Use GUID as ID for local storage
 			Name:        apiSchema.Name,
 			Description: apiSchema.Description,
@@ -77,7 +78,7 @@ func ConvertConfigSheetFromAPI(apiConfigSheet *ConfigSheet) *entities.ConfigShee
 	}
 
 	localConfigSheet := &entities.ConfigSheet{
-		Entity: entities.Entity{
+		Entity: storage.Entity{
 			ID:          apiConfigSheet.GUID, // Use GUID as ID for local storage
 			Name:        apiConfigSheet.Name,
 			Description: apiConfigSheet.Description,

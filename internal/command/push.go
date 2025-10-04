@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/api"
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 )
 
@@ -114,7 +114,7 @@ func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
 
 // pushSchemas pushes all local schemas to remote
 func (c *PushCommand) pushSchemas(
-	manager *manager.Manager,
+	manager *entities.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,
@@ -156,7 +156,7 @@ func (c *PushCommand) pushSchemas(
 
 // pushConfigSheets pushes all local config sheets to remote
 func (c *PushCommand) pushConfigSheets(
-	manager *manager.Manager,
+	manager *entities.Manager,
 	client *api.Client,
 	printer *output.Printer,
 	dryRun bool,

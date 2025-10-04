@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/util"
 )
 
@@ -14,13 +14,13 @@ type (
 )
 
 // WithEntityManager returns a new context with the entity manager instance
-func WithEntityManager(ctx context.Context, manager *manager.Manager) context.Context {
+func WithEntityManager(ctx context.Context, manager *entities.Manager) context.Context {
 	return context.WithValue(ctx, entityManagerKey{}, manager)
 }
 
 // GetEntityManager retrieves the entity manager instance from the context
-func GetEntityManager(ctx context.Context) *manager.Manager {
-	if manager, ok := ctx.Value(entityManagerKey{}).(*manager.Manager); ok {
+func GetEntityManager(ctx context.Context) *entities.Manager {
+	if manager, ok := ctx.Value(entityManagerKey{}).(*entities.Manager); ok {
 		return manager
 	}
 	return nil

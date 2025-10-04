@@ -1,5 +1,5 @@
 // Package entities provides the base storage functionality for all entity types.
-package entities
+package storage
 
 import (
 	"encoding/json"
@@ -15,16 +15,16 @@ const (
 	fileExtension = ".json"
 )
 
-// baseStorage provides common storage operations for all entity types
-type baseStorage struct {
+// BaseStorage provides common storage operations for all entity types
+type BaseStorage struct {
 	config     *config.Config
 	entityType string // "schemas", "projects", "sheets"
 	baseDir    string
 	indexPath  string
 }
 
-// newBaseStorage creates a new base storage instance for an entity type
-func newBaseStorage(cfg *config.Config, entityType string) (*baseStorage, error) {
+// NewBaseStorage creates a new base storage instance for an entity type
+func NewBaseStorage(cfg *config.Config, entityType string) (*BaseStorage, error) {
 	baseDir := filepath.Join(cfg.BaseDir, entityType)
 
 	// Ensure directory exists
@@ -32,7 +32,7 @@ func newBaseStorage(cfg *config.Config, entityType string) (*baseStorage, error)
 		return nil, fmt.Errorf("failed to create directory %s: %w", baseDir, err)
 	}
 
-	return &baseStorage{
+	return &BaseStorage{
 		config:     cfg,
 		entityType: entityType,
 		baseDir:    baseDir,
@@ -40,8 +40,8 @@ func newBaseStorage(cfg *config.Config, entityType string) (*baseStorage, error)
 	}, nil
 }
 
-// saveEntity saves an entity to a JSON file
-func (bs *baseStorage) saveEntity(uuid string, entity interface{}) error {
+// SaveEntity saves an entity to a JSON file
+func (bs *BaseStorage) SaveEntity(uuid string, entity interface{}) error {
 	filePath := filepath.Join(bs.baseDir, uuid+fileExtension)
 
 	data, err := json.MarshalIndent(entity, "", "  ")
@@ -56,8 +56,8 @@ func (bs *baseStorage) saveEntity(uuid string, entity interface{}) error {
 	return nil
 }
 
-// loadEntity loads an entity from a JSON file
-func (bs *baseStorage) loadEntity(uuid string, entity interface{}) error {
+// LoadEntity loads an entity from a JSON file
+func (bs *BaseStorage) LoadEntity(uuid string, entity interface{}) error {
 	filePath := filepath.Join(bs.baseDir, uuid+fileExtension)
 
 	data, err := os.ReadFile(filePath)
@@ -72,8 +72,8 @@ func (bs *baseStorage) loadEntity(uuid string, entity interface{}) error {
 	return nil
 }
 
-// removeEntity removes an entity file
-func (bs *baseStorage) removeEntity(uuid string) error {
+// RemoveEntity removes an entity file
+func (bs *BaseStorage) RemoveEntity(uuid string) error {
 	filePath := filepath.Join(bs.baseDir, uuid+fileExtension)
 
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
@@ -83,8 +83,8 @@ func (bs *baseStorage) removeEntity(uuid string) error {
 	return nil
 }
 
-// loadIndex loads the index for this entity type
-func (bs *baseStorage) loadIndex() (*Index, error) {
+// LoadIndex loads the index for this entity type
+func (bs *BaseStorage) LoadIndex() (*Index, error) {
 	index := NewIndex()
 
 	data, err := os.ReadFile(bs.indexPath)
@@ -103,8 +103,8 @@ func (bs *baseStorage) loadIndex() (*Index, error) {
 	return index, nil
 }
 
-// saveIndex saves the index for this entity type
-func (bs *baseStorage) saveIndex(index *Index) error {
+// SaveIndex saves the index for this entity type
+func (bs *BaseStorage) SaveIndex(index *Index) error {
 	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal index: %w", err)
@@ -117,41 +117,41 @@ func (bs *baseStorage) saveIndex(index *Index) error {
 	return nil
 }
 
-// updateIndex adds or updates an entity in the index
-func (bs *baseStorage) updateIndex(entity Entity) error {
-	index, err := bs.loadIndex()
+// UpdateIndex adds or updates an entity in the index
+func (bs *BaseStorage) UpdateIndex(entity Entity) error {
+	index, err := bs.LoadIndex()
 	if err != nil {
 		return fmt.Errorf("failed to load index: %w", err)
 	}
 
 	index.AddEntity(entity)
 
-	if err := bs.saveIndex(index); err != nil {
+	if err := bs.SaveIndex(index); err != nil {
 		return fmt.Errorf("failed to save index: %w", err)
 	}
 
 	return nil
 }
 
-// removeFromIndex removes an entity from the index
-func (bs *baseStorage) removeFromIndex(nameOrUUID string) error {
-	index, err := bs.loadIndex()
+// RemoveFromIndex removes an entity from the index
+func (bs *BaseStorage) RemoveFromIndex(nameOrUUID string) error {
+	index, err := bs.LoadIndex()
 	if err != nil {
 		return fmt.Errorf("failed to load index: %w", err)
 	}
 
 	index.RemoveEntity(nameOrUUID)
 
-	if err := bs.saveIndex(index); err != nil {
+	if err := bs.SaveIndex(index); err != nil {
 		return fmt.Errorf("failed to save index: %w", err)
 	}
 
 	return nil
 }
 
-// resolveUUID resolves a name or UUID to a UUID using the index
-func (bs *baseStorage) resolveUUID(nameOrUUID string) (string, error) {
-	index, err := bs.loadIndex()
+// ResolveUUID resolves a name or UUID to a UUID using the index
+func (bs *BaseStorage) ResolveUUID(nameOrUUID string) (string, error) {
+	index, err := bs.LoadIndex()
 	if err != nil {
 		return "", fmt.Errorf("failed to load index: %w", err)
 	}
@@ -164,9 +164,9 @@ func (bs *baseStorage) resolveUUID(nameOrUUID string) (string, error) {
 	return uuid, nil
 }
 
-// listSummaries returns all entity summaries from the index
-func (bs *baseStorage) listSummaries() ([]EntitySummary, error) {
-	index, err := bs.loadIndex()
+// ListSummaries returns all entity summaries from the index
+func (bs *BaseStorage) ListSummaries() ([]EntitySummary, error) {
+	index, err := bs.LoadIndex()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load index: %w", err)
 	}

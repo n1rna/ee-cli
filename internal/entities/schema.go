@@ -7,16 +7,17 @@ import (
 	"strings"
 
 	"github.com/n1rna/ee-cli/internal/config"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // SchemaManager handles all schema-related operations
 type SchemaManager struct {
-	storage *baseStorage
+	storage *storage.BaseStorage
 }
 
 // NewSchemaManager creates a new schema manager
 func NewSchemaManager(cfg *config.Config) (*SchemaManager, error) {
-	storage, err := newBaseStorage(cfg, "schemas")
+	storage, err := storage.NewBaseStorage(cfg, "schemas")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize schema storage: %w", err)
 	}
@@ -51,12 +52,12 @@ func (sm *SchemaManager) Create(
 // Save saves a schema to storage
 func (sm *SchemaManager) Save(s *Schema) error {
 	// Save entity file
-	if err := sm.storage.saveEntity(s.ID, s); err != nil {
+	if err := sm.storage.SaveEntity(s.Entity.ID, s); err != nil {
 		return fmt.Errorf("failed to save schema file: %w", err)
 	}
 
 	// Update index
-	if err := sm.storage.updateIndex(s.Entity); err != nil {
+	if err := sm.storage.UpdateIndex(s.Entity); err != nil {
 		return fmt.Errorf("failed to update schema index: %w", err)
 	}
 
@@ -66,7 +67,7 @@ func (sm *SchemaManager) Save(s *Schema) error {
 // GetByID loads a schema by UUID
 func (sm *SchemaManager) GetByID(uuid string) (*Schema, error) {
 	var s Schema
-	if err := sm.storage.loadEntity(uuid, &s); err != nil {
+	if err := sm.storage.LoadEntity(uuid, &s); err != nil {
 		return nil, fmt.Errorf("failed to load schema %s: %w", uuid, err)
 	}
 	return &s, nil
@@ -74,7 +75,7 @@ func (sm *SchemaManager) GetByID(uuid string) (*Schema, error) {
 
 // GetByName loads a schema by name
 func (sm *SchemaManager) GetByName(name string) (*Schema, error) {
-	uuid, err := sm.storage.resolveUUID(name)
+	uuid, err := sm.storage.ResolveUUID(name)
 	if err != nil {
 		return nil, fmt.Errorf("schema '%s' not found: %w", name, err)
 	}
@@ -94,18 +95,18 @@ func (sm *SchemaManager) Get(nameOrUUID string) (*Schema, error) {
 // Delete removes a schema
 func (sm *SchemaManager) Delete(nameOrUUID string) error {
 	// Resolve to UUID
-	uuid, err := sm.storage.resolveUUID(nameOrUUID)
+	uuid, err := sm.storage.ResolveUUID(nameOrUUID)
 	if err != nil {
 		return fmt.Errorf("schema '%s' not found: %w", nameOrUUID, err)
 	}
 
 	// Remove entity file
-	if err := sm.storage.removeEntity(uuid); err != nil {
+	if err := sm.storage.RemoveEntity(uuid); err != nil {
 		return fmt.Errorf("failed to remove schema file: %w", err)
 	}
 
 	// Remove from index
-	if err := sm.storage.removeFromIndex(nameOrUUID); err != nil {
+	if err := sm.storage.RemoveFromIndex(nameOrUUID); err != nil {
 		return fmt.Errorf("failed to remove from schema index: %w", err)
 	}
 
@@ -113,8 +114,8 @@ func (sm *SchemaManager) Delete(nameOrUUID string) error {
 }
 
 // List returns all schema summaries
-func (sm *SchemaManager) List() ([]EntitySummary, error) {
-	return sm.storage.listSummaries()
+func (sm *SchemaManager) List() ([]storage.EntitySummary, error) {
+	return sm.storage.ListSummaries()
 }
 
 // Update updates an existing schema

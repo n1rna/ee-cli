@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // Format represents different output formats
@@ -94,34 +95,10 @@ func (p *Printer) PrintSchema(s *entities.Schema) error {
 }
 
 // PrintSchemaList prints a list of schema summaries
-func (p *Printer) PrintSchemaList(summaries []entities.EntitySummary) error {
+func (p *Printer) PrintSchemaList(summaries []storage.EntitySummary) error {
 	switch p.format {
 	case FormatTable:
 		return p.printSchemaListTable(summaries)
-	case FormatJSON:
-		return p.printJSON(summaries)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
-// PrintProject prints a project in the specified format
-func (p *Printer) PrintProject(proj *entities.Project) error {
-	switch p.format {
-	case FormatTable:
-		return p.printProjectTable(proj)
-	case FormatJSON:
-		return p.printJSON(proj)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
-// PrintProjectList prints a list of project summaries
-func (p *Printer) PrintProjectList(summaries []entities.EntitySummary) error {
-	switch p.format {
-	case FormatTable:
-		return p.printProjectListTable(summaries)
 	case FormatJSON:
 		return p.printJSON(summaries)
 	default:
@@ -142,7 +119,7 @@ func (p *Printer) PrintConfigSheet(cs *entities.ConfigSheet) error {
 }
 
 // PrintConfigSheetList prints a list of config sheet summaries
-func (p *Printer) PrintConfigSheetList(summaries []entities.EntitySummary) error {
+func (p *Printer) PrintConfigSheetList(summaries []storage.EntitySummary) error {
 	switch p.format {
 	case FormatTable:
 		return p.printConfigSheetListTable(summaries)
@@ -208,72 +185,9 @@ func (p *Printer) printSchemaTable(s *entities.Schema) error {
 }
 
 // printSchemaListTable prints a list of schemas in table format
-func (p *Printer) printSchemaListTable(summaries []entities.EntitySummary) error {
+func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error {
 	if len(summaries) == 0 {
 		p.printf("No schemas found\n")
-		return nil
-	}
-
-	// Sort by name
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].Name < summaries[j].Name
-	})
-
-	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
-
-	for _, summary := range summaries {
-		desc := summary.Description
-		if len(desc) > 50 {
-			desc = desc[:47] + "..."
-		}
-
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
-			summary.Name,
-			desc,
-			summary.CreatedAt.Format("2006-01-02"),
-		)
-	}
-
-	return w.Flush()
-}
-
-// printProjectTable prints a project in table format
-func (p *Printer) printProjectTable(proj *entities.Project) error {
-	p.printf("Project: %s\n", proj.Name)
-	p.printf("ID: %s\n", proj.ID)
-	if proj.Description != "" {
-		p.printf("Description: %s\n", proj.Description)
-	}
-	p.printf("Schema: %s\n", proj.Schema)
-	p.printf("Created: %s\n", proj.CreatedAt.Format(time.RFC3339))
-	p.printf("Updated: %s\n", proj.UpdatedAt.Format(time.RFC3339))
-
-	p.printf("\nEnvironments:\n")
-	if len(proj.Environments) == 0 {
-		p.printf("  No environments defined\n")
-		return nil
-	}
-
-	// Sort environment names
-	envNames := make([]string, 0, len(proj.Environments))
-	for name := range proj.Environments {
-		envNames = append(envNames, name)
-	}
-	sort.Strings(envNames)
-
-	for _, name := range envNames {
-		p.printf("  - %s\n", name)
-	}
-
-	return nil
-}
-
-// printProjectListTable prints a list of projects in table format
-func (p *Printer) printProjectListTable(summaries []entities.EntitySummary) error {
-	if len(summaries) == 0 {
-		p.printf("No projects found\n")
 		return nil
 	}
 
@@ -310,13 +224,6 @@ func (p *Printer) printConfigSheetTable(cs *entities.ConfigSheet) error {
 		p.printf("Description: %s\n", cs.Description)
 	}
 
-	if cs.Project != "" {
-		p.printf("Project: %s\n", cs.Project)
-	}
-	if cs.Environment != "" {
-		p.printf("Environment: %s\n", cs.Environment)
-	}
-
 	if cs.Schema.IsReference() {
 		p.printf("Schema Reference: %s\n", cs.Schema.Ref)
 	} else if cs.Schema.IsInline() {
@@ -335,7 +242,7 @@ func (p *Printer) printConfigSheetTable(cs *entities.ConfigSheet) error {
 }
 
 // printConfigSheetListTable prints a list of config sheets in table format
-func (p *Printer) printConfigSheetListTable(summaries []entities.EntitySummary) error {
+func (p *Printer) printConfigSheetListTable(summaries []storage.EntitySummary) error {
 	if len(summaries) == 0 {
 		p.printf("No config sheets found\n")
 		return nil

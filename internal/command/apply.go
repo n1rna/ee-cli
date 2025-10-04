@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 	"github.com/n1rna/ee-cli/internal/util"
 )
@@ -156,20 +156,12 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 
 // applyStandaloneSheet applies a standalone config sheet
 func (c *ApplyCommand) applyStandaloneSheet(
-	manager *manager.Manager,
+	manager *entities.Manager,
 	sheetName string,
 ) (map[string]string, error) {
 	cs, err := manager.ConfigSheets.Get(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("config sheet '%s' not found: %w", sheetName, err)
-	}
-
-	if !cs.IsStandalone() {
-		return nil, fmt.Errorf(
-			"config sheet '%s' is not standalone (it's associated with project '%s')",
-			sheetName,
-			cs.Project,
-		)
 	}
 
 	return cs.Values, nil

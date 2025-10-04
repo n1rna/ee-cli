@@ -9,7 +9,7 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/command"
 	"github.com/n1rna/ee-cli/internal/config"
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/util"
 )
 
@@ -44,7 +44,7 @@ func main() {
 		}
 
 		// Initialize entity manager
-		entityManager, err := manager.NewManager(cfg)
+		entityManager, err := entities.NewManager(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize entity manager: %w", err)
 		}

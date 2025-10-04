@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/n1rna/ee-cli/internal/entities"
-	"github.com/n1rna/ee-cli/internal/manager"
 	"github.com/n1rna/ee-cli/internal/output"
 	"github.com/n1rna/ee-cli/internal/parser"
 )
@@ -230,7 +229,7 @@ func (c *InitCommand) parseVariableDefinition(varDef string) (entities.Variable,
 // createSampleEnvFiles creates sample .env files for each environment
 func (c *InitCommand) createSampleEnvFiles(
 	projectConfig *parser.ProjectConfig,
-	manager *manager.Manager,
+	manager *entities.Manager,
 ) error {
 	for envName, envDef := range projectConfig.Environments {
 		// Find .env file references in the environment sheets
@@ -259,7 +258,7 @@ func (c *InitCommand) createSampleEnvFiles(
 func (c *InitCommand) createSampleEnvFile(
 	filename string,
 	schema parser.ProjectConfigSchema,
-	manager *manager.Manager,
+	manager *entities.Manager,
 ) error {
 	content := fmt.Sprintf("# %s environment configuration\n", filename)
 	content += "# Edit the values below according to your needs\n\n"
@@ -316,7 +315,7 @@ func (c *InitCommand) createSampleEnvFile(
 // loadSchemaVariables loads variables from a schema reference using the schema manager
 func (c *InitCommand) loadSchemaVariables(
 	schemaRef string,
-	manager *manager.Manager,
+	manager *entities.Manager,
 ) (map[string]entities.Variable, error) {
 	// Use the schema manager to load the schema by reference
 	schema, err := manager.Schemas.GetByReference(schemaRef)

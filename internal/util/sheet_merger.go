@@ -6,17 +6,17 @@ import (
 	"os"
 	"strings"
 
-	"github.com/n1rna/ee-cli/internal/manager"
+	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/parser"
 )
 
 // ConfigSheetMerger handles merging multiple config sheets according to environment definitions
 type ConfigSheetMerger struct {
-	manager *manager.Manager
+	manager *entities.Manager
 }
 
 // NewConfigSheetMerger creates a new config sheet merger
-func NewConfigSheetMerger(manager *manager.Manager) *ConfigSheetMerger {
+func NewConfigSheetMerger(manager *entities.Manager) *ConfigSheetMerger {
 	return &ConfigSheetMerger{
 		manager: manager,
 	}
