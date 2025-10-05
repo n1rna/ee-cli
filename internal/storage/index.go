@@ -1,17 +1,5 @@
 package storage
 
-import "time"
-
-// EntitySummary represents a lightweight summary of an entity for index.json files
-type EntitySummary struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Remote      string    `json:"remote,omitempty"`
-	Local       bool      `json:"local"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
 // Index represents the structure of index.json files for entity management
 // Provides fast name-to-UUID resolution and entity summaries
 type Index struct {

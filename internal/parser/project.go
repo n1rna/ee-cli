@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
 )
 
@@ -32,7 +33,7 @@ type EnvironmentDefinition struct {
 
 // LoadProjectConfig loads and parses a .ee file from the current directory
 func LoadProjectConfig() (*ProjectConfig, error) {
-	return LoadProjectConfigFromPath(".ee")
+	return LoadProjectConfigFromPath(config.ProjectConfigFileName)
 }
 
 // LoadProjectConfigFromPath loads and parses a .ee file from the specified path
@@ -82,7 +83,7 @@ func SaveProjectConfig(config *ProjectConfig, path string) error {
 
 // IsProjectDirectory checks if the current directory contains a .ee file
 func IsProjectDirectory() bool {
-	_, err := os.Stat(".ee")
+	_, err := os.Stat(config.ProjectConfigFileName)
 	return err == nil
 }
 

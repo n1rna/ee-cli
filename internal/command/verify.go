@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 	"github.com/n1rna/ee-cli/internal/parser"
@@ -81,7 +82,11 @@ func (c *VerifyCommand) Run(cmd *cobra.Command, args []string) error {
 	// Get command context - requires project context
 	context, err := RequireProjectContext(cmd.Context())
 	if err != nil {
-		return fmt.Errorf("verify command requires a project context (.ee file): %w", err)
+		return fmt.Errorf(
+			"verify command requires a project context (%s file): %w",
+			config.ProjectConfigFileName,
+			err,
+		)
 	}
 
 	// Set up printer

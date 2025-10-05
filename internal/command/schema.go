@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/parser"
 )
 
 type SchemaCommand struct {
@@ -69,7 +71,7 @@ Examples:
 		RunE: c.runCreate,
 	}
 
-	cmd.Flags().String("import", "", "Import schema definition from a YAML file")
+	cmd.Flags().String("import", "", "Import schema definition from a YAML, JSON, or dotenv file")
 	cmd.Flags().String("description", "", "Schema description")
 	cmd.Flags().
 		StringSlice("variable", []string{}, "Add variable in format 'name:type:title:required[:default]'")
@@ -379,22 +381,59 @@ func (c *SchemaCommand) importSchema(
 	name string,
 	filename string,
 ) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return fmt.Errorf("failed to read import file: %w", err)
-	}
+	// Detect file format based on extension
+	ext := strings.ToLower(filepath.Ext(filename))
 
 	var schemaObj entities.Schema
-	if err := yaml.Unmarshal(data, &schemaObj); err != nil {
-		return fmt.Errorf("failed to parse schema file: %w", err)
+	var variables []entities.Variable
+	var description string
+	var extends []string
+
+	// If it's a .env file, use the dotenv parser to extract schema
+	if ext == ".env" || strings.Contains(strings.ToLower(filename), ".env") {
+		p := parser.NewAnnotatedDotEnvParser()
+		_, schema, err := p.ParseFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to parse .env file: %w", err)
+		}
+		variables = schema.Variables
+		description = schema.Description
+	} else {
+		// For other files, read and try YAML/JSON
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read import file: %w", err)
+		}
+
+		// Try YAML first, then JSON, then dotenv as fallback
+		if err := yaml.Unmarshal(data, &schemaObj); err != nil {
+			if err := json.Unmarshal(data, &schemaObj); err != nil {
+				// Try parsing as dotenv file as fallback
+				p := parser.NewAnnotatedDotEnvParser()
+				_, schema, parseErr := p.ParseFile(filename)
+				if parseErr != nil {
+					return fmt.Errorf("file is neither valid YAML, JSON, nor dotenv format: %w", parseErr)
+				}
+				variables = schema.Variables
+				description = schema.Description
+			} else {
+				variables = schemaObj.Variables
+				description = schemaObj.Description
+				extends = schemaObj.Extends
+			}
+		} else {
+			variables = schemaObj.Variables
+			description = schemaObj.Description
+			extends = schemaObj.Extends
+		}
 	}
 
 	// Create schema using the manager
 	s, err := manager.Schemas.Create(
 		name,
-		schemaObj.Description,
-		schemaObj.Variables,
-		schemaObj.Extends,
+		description,
+		variables,
+		extends,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
@@ -457,8 +496,6 @@ func (c *SchemaCommand) runDelete(cmd *cobra.Command, args []string) error {
 	printer := output.NewPrinter(output.FormatTable, quiet)
 
 	schemaName := args[0]
-
-	// TODO: Add dependency checking - see if schema is in use by projects/config sheets
 
 	if err := manager.Schemas.Delete(schemaName); err != nil {
 		return fmt.Errorf("failed to delete schema: %w", err)

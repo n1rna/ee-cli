@@ -7,6 +7,11 @@ import (
 	"path/filepath"
 )
 
+const (
+	// ProjectConfigFileName is the name of the project configuration file
+	ProjectConfigFileName = ".ee"
+)
+
 // Config holds global configuration settings
 type Config struct {
 	// BaseDir is the root directory for ee storage

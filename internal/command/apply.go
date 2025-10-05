@@ -2,18 +2,18 @@
 package command
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/parser"
 	"github.com/n1rna/ee-cli/internal/util"
 )
 
@@ -100,7 +100,7 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 	var values map[string]string
 
 	// Detect if the argument is a file path or environment name
-	if c.isFilePath(envOrSheetName) {
+	if entities.IsFilePath(envOrSheetName) {
 		// Apply .env file directly
 		values, err = c.applyEnvFile(envOrSheetName)
 		if err != nil {
@@ -174,7 +174,10 @@ func (c *ApplyCommand) applyProjectEnvironment(
 ) (map[string]string, error) {
 	// Check if we're in a project context
 	if !context.IsInProject {
-		return nil, fmt.Errorf("no .ee file found - not in a project context")
+		return nil, fmt.Errorf(
+			"no %s file found - not in a project context",
+			config.ProjectConfigFileName,
+		)
 	}
 
 	// Validate that the environment exists
@@ -197,6 +200,23 @@ func (c *ApplyCommand) applyProjectEnvironment(
 			envName,
 			err,
 		)
+	}
+
+	return values, nil
+}
+
+// applyEnvFile reads and parses a .env file using the parser.ParseFile function
+func (c *ApplyCommand) applyEnvFile(filePath string) (map[string]string, error) {
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf(".env file not found: %s", filePath)
+	}
+
+	// Use the parser to parse the .env file
+	p := parser.NewAnnotatedDotEnvParser()
+	values, _, err := p.ParseFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse .env file: %w", err)
 	}
 
 	return values, nil
@@ -283,93 +303,4 @@ func (c *ApplyCommand) startShellWithEnvironment(
 	}
 
 	return nil
-}
-
-// isFilePath detects if the argument is a file path rather than an environment name
-// Returns true if the argument starts with '.', '/', '~', or contains a file extension
-func (c *ApplyCommand) isFilePath(arg string) bool {
-	// Check if it's a relative path starting with '.' or current directory
-	if strings.HasPrefix(arg, ".") {
-		return true
-	}
-
-	// Check if it's an absolute path starting with '/' or '~'
-	if strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "~") {
-		return true
-	}
-
-	// Check if it contains a file extension
-	if filepath.Ext(arg) != "" {
-		return true
-	}
-
-	// Check if the file actually exists
-	if _, err := os.Stat(arg); err == nil {
-		return true
-	}
-
-	return false
-}
-
-// applyEnvFile reads and parses a .env file
-func (c *ApplyCommand) applyEnvFile(filePath string) (map[string]string, error) {
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf(".env file not found: %s", filePath)
-	}
-
-	// Open file
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open .env file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			// Log error but don't override the main error
-		}
-	}()
-
-	values := make(map[string]string)
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse KEY=VALUE format
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid line %d in .env file: %s", lineNum, line)
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Remove surrounding quotes if present
-		if len(value) >= 2 {
-			if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
-				(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
-				value = value[1 : len(value)-1]
-			}
-		}
-
-		// Validate key name
-		if key == "" {
-			return nil, fmt.Errorf("empty variable name on line %d", lineNum)
-		}
-
-		values[key] = value
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading .env file: %w", err)
-	}
-
-	return values, nil
 }

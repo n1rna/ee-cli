@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/parser"
 )
 
 // SheetCommand handles the ee sheet command
@@ -226,6 +229,8 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 		schemaRef.Ref = "#/schemas/" + s.ID
 	}
 
+	// TODO: Add logic for guessing the schema of the sheet
+
 	// Create standalone config sheet
 	cs := entities.NewConfigSheet(sheetName, description, schemaRef, values)
 
@@ -245,6 +250,20 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 }
 
 func (c *SheetCommand) importValuesFromFile(filename string) (map[string]string, error) {
+	// Detect file format based on extension
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	// If it's a .env file, use the dotenv parser
+	if ext == ".env" || strings.Contains(strings.ToLower(filename), ".env") {
+		p := parser.NewAnnotatedDotEnvParser()
+		values, _, err := p.ParseFile(filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse .env file: %w", err)
+		}
+		return values, nil
+	}
+
+	// For other files, read and try YAML/JSON
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
@@ -252,10 +271,16 @@ func (c *SheetCommand) importValuesFromFile(filename string) (map[string]string,
 
 	values := make(map[string]string)
 
-	// Try YAML first, then JSON
+	// Try YAML first, then JSON, then dotenv as fallback
 	if err := yaml.Unmarshal(data, &values); err != nil {
 		if err := json.Unmarshal(data, &values); err != nil {
-			return nil, fmt.Errorf("file is neither valid YAML nor JSON")
+			// Try parsing as dotenv file as fallback
+			p := parser.NewAnnotatedDotEnvParser()
+			parsedValues, _, parseErr := p.ParseFile(filename)
+			if parseErr != nil {
+				return nil, fmt.Errorf("file is neither valid YAML, JSON, nor dotenv format")
+			}
+			return parsedValues, nil
 		}
 	}
 

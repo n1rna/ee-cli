@@ -52,7 +52,7 @@ func (sm *SchemaManager) Create(
 // Save saves a schema to storage
 func (sm *SchemaManager) Save(s *Schema) error {
 	// Save entity file
-	if err := sm.storage.SaveEntity(s.Entity.ID, s); err != nil {
+	if err := sm.storage.SaveEntity(s.ID, s); err != nil {
 		return fmt.Errorf("failed to save schema file: %w", err)
 	}
 

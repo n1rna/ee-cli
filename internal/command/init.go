@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 	"github.com/n1rna/ee-cli/internal/parser"
@@ -51,12 +52,12 @@ Examples:
 	}
 
 	cmd.Flags().
-		String("schema", "", "Schema reference to use (local://schema-name or remote://path)")
-	cmd.Flags().String("remote", "", "Remote URL for synchronization")
+		StringP("schema", "s", "", "Schema reference to use (local://schema-name or remote://path)")
+	cmd.Flags().StringP("remote", "r", "", "Remote URL for synchronization")
 	cmd.Flags().
 		StringSlice("var", []string{}, "Add schema variable (format:name:type:title:required:default)")
-	cmd.Flags().Bool("force", false, "Overwrite existing .ee file")
-	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+	cmd.Flags().BoolP("force", "f", false, "Overwrite existing .ee file")
+	cmd.Flags().BoolP("quiet", "q", false, "Suppress non-error output")
 
 	return cmd
 }
@@ -88,9 +89,12 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if .ee file already exists
-	eeFile := ".ee"
+	eeFile := config.ProjectConfigFileName
 	if _, err := os.Stat(eeFile); err == nil && !force {
-		return fmt.Errorf(".ee file already exists (use --force to overwrite)")
+		return fmt.Errorf(
+			"%s file already exists (use --force to overwrite)",
+			config.ProjectConfigFileName,
+		)
 	}
 
 	// Build schema configuration
@@ -117,7 +121,7 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 	// Save .ee file
 	err = parser.SaveProjectConfig(projectConfig, eeFile)
 	if err != nil {
-		return fmt.Errorf("failed to save .ee file: %w", err)
+		return fmt.Errorf("failed to save %s file: %w", config.ProjectConfigFileName, err)
 	}
 
 	// Get entity manager from context for schema loading
@@ -133,7 +137,7 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	printer.Success(fmt.Sprintf("✓ Initialized ee project: %s", projectName))
-	printer.Info("✓ Created .ee configuration file")
+	printer.Info(fmt.Sprintf("✓ Created %s configuration file", config.ProjectConfigFileName))
 	if len(projectConfig.Environments) > 0 {
 		printer.Info("✓ Created sample .env files for environments")
 	}

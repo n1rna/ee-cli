@@ -30,3 +30,13 @@ func NewEntity(name, description string) Entity {
 		UpdatedAt:   now,
 	}
 }
+
+// EntitySummary represents a lightweight summary of an entity for index.json files
+type EntitySummary struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Remote      string    `json:"remote,omitempty"`
+	Local       bool      `json:"local"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

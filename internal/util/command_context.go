@@ -42,7 +42,10 @@ func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
 // RequireProjectContext ensures that the command is running in a project context
 func (ctx *CommandContext) RequireProjectContext() error {
 	if !ctx.IsInProject {
-		return fmt.Errorf("this command requires a .ee file (not in a project directory)")
+		return fmt.Errorf(
+			"this command requires a %s file (not in a project directory)",
+			config.ProjectConfigFileName,
+		)
 	}
 	return nil
 }

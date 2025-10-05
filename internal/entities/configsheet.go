@@ -3,6 +3,9 @@ package entities
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/storage"
@@ -50,7 +53,7 @@ func (csm *ConfigSheetManager) Create(
 // Save saves a config sheet to storage
 func (csm *ConfigSheetManager) Save(cs *ConfigSheet) error {
 	// Save entity file
-	if err := csm.storage.SaveEntity(cs.Entity.ID, cs); err != nil {
+	if err := csm.storage.SaveEntity(cs.ID, cs); err != nil {
 		return fmt.Errorf("failed to save config sheet file: %w", err)
 	}
 
@@ -117,7 +120,9 @@ func (csm *ConfigSheetManager) List() ([]storage.EntitySummary, error) {
 }
 
 // ListWithFilters returns config sheet summaries matching the given filters
-func (csm *ConfigSheetManager) ListWithFilters(filters map[string]string) ([]storage.EntitySummary, error) {
+func (csm *ConfigSheetManager) ListWithFilters(
+	filters map[string]string,
+) ([]storage.EntitySummary, error) {
 	allSummaries, err := csm.List()
 	if err != nil {
 		return nil, err
@@ -195,4 +200,36 @@ func (csm *ConfigSheetManager) UnsetValue(nameOrUUID, varName string) (*ConfigSh
 		delete(cs.Values, varName)
 		return nil
 	})
+}
+
+// IsFilePath detects if the argument is a file path rather than a name/ID
+// Returns true if the argument starts with '.', '/', '~', or contains a file extension
+func IsFilePath(arg string) bool {
+	// Check if it's a relative path starting with '.' or current directory
+	if strings.HasPrefix(arg, ".") {
+		return true
+	}
+
+	// Check if it's an absolute path starting with '/' or '~'
+	if strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "~") {
+		return true
+	}
+
+	// Check if it contains a file extension
+	if filepath.Ext(arg) != "" {
+		return true
+	}
+
+	// Check if the file actually exists
+	if _, err := os.Stat(arg); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// GetConfigSheetByNameOrID is a helper that gets a config sheet by name or ID
+// This is a convenience wrapper around the Get method
+func (csm *ConfigSheetManager) GetConfigSheetByNameOrID(nameOrID string) (*ConfigSheet, error) {
+	return csm.Get(nameOrID)
 }
