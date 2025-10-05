@@ -328,7 +328,14 @@ func (c *SheetCommand) runExport(cmd *cobra.Command, args []string) error {
 	}
 
 	format, _ := cmd.Flags().GetString("format")
-	printer := output.NewPrinter(output.FormatTable, false)
+	// Create printer with appropriate format for values export
+	var printerFormat output.Format
+	if format == "json" {
+		printerFormat = output.FormatJSON
+	} else {
+		printerFormat = output.FormatTable
+	}
+	printer := output.NewPrinter(printerFormat, false)
 
 	sheetName := args[0]
 	cs, err := manager.ConfigSheets.Get(sheetName)

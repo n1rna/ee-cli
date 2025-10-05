@@ -20,6 +20,7 @@ GOFMT=$(GOCMD) fmt
 GO_FILES=$(shell find . -name '*.go' -not -path "./vendor/*")
 
 .PHONY: all build clean test coverage deps fmt lint vet help install uninstall dev
+.PHONY: test-integration test-schema test-sheet test-project test-merge test-parallel
 
 all: clean build test ## Run clean, build, and test
 
@@ -32,11 +33,22 @@ clean: ## Clean build directory
 	@echo "Cleaning..."
 	@rm -rf $(BUILD_DIR)
 	@rm -rf $(COVERAGE_DIR)
+	@rm -rf tests/.venv
+	@rm -rf tests/.pytest_cache
+	@rm -rf tests/__pycache__
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	$(GOCLEAN)
 
-test: ## Run tests
-	@echo "Running tests..."
+test: ## Run unit tests
+	@echo "Running unit tests..."
 	$(GOTEST) -v ./...
+
+test-integration: ## Run integration tests
+	@echo "Running integration tests..."
+	@cd tests && uv run pytest
+
+test-all: test test-integration ## Run both unit and integration tests
 
 coverage: ## Generate test coverage report
 	@echo "Generating coverage report..."

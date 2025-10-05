@@ -1,0 +1,22 @@
+[project]
+name = "ee-cli-tests"
+version = "0.1.0"
+description = "Integration tests for ee-cli"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-xdist>=3.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+]

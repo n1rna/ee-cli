@@ -218,7 +218,7 @@ func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
 
 	if sheet.Schema.IsReference() {
 		// Load referenced schema
-		schema, err = v.manager.Schemas.Get(sheet.Schema.Ref)
+		schema, err = v.manager.Schemas.GetByReference(sheet.Schema.Ref)
 		if err != nil {
 			return fmt.Errorf("failed to load referenced schema: %w", err)
 		}

@@ -1,0 +1,20 @@
+description: Schema for web service applications
+variables:
+  - name: DATABASE_URL
+    type: string
+    title: Database Connection URL
+    required: true
+  - name: PORT
+    type: number
+    title: Server Port
+    required: false
+    default: "8080"
+  - name: DEBUG
+    type: boolean
+    title: Debug Mode
+    required: false
+    default: "false"
+  - name: API_KEY
+    type: string
+    title: API Key
+    required: true

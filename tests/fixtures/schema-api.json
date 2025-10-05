@@ -1,0 +1,25 @@
+{
+  "description": "Schema for API services",
+  "variables": [
+    {
+      "name": "API_HOST",
+      "type": "string",
+      "title": "API Host",
+      "required": true
+    },
+    {
+      "name": "API_PORT",
+      "type": "number",
+      "title": "API Port",
+      "required": false,
+      "default": "3000"
+    },
+    {
+      "name": "LOG_LEVEL",
+      "type": "string",
+      "title": "Log Level",
+      "required": false,
+      "default": "info"
+    }
+  ]
+}

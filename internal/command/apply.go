@@ -106,7 +106,7 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		if !quiet {
+		if !quiet && format != "json" {
 			printer.Info(fmt.Sprintf("Applying .env file: %s", envOrSheetName))
 		}
 	} else if standalone {
@@ -115,7 +115,7 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		if !quiet {
+		if !quiet && format != "json" {
 			printer.Info(fmt.Sprintf("Applying standalone config sheet: %s", envOrSheetName))
 		}
 	} else {
@@ -124,14 +124,17 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		if !quiet {
+		if !quiet && format != "json" {
 			printer.Info(fmt.Sprintf("Applying environment '%s'", envOrSheetName))
 		}
 	}
 
 	if dryRun {
 		// Show what would be applied
-		printer.Info("Environment variables that would be applied:")
+		// Only show info message for non-JSON formats
+		if format != "json" && !quiet {
+			printer.Info("Environment variables that would be applied:")
+		}
 		switch format {
 		case "env":
 			return printer.PrintEnvironmentExport(values)

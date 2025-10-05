@@ -57,11 +57,16 @@ func (p *SchemaParser) ParseFile(path string) (*SchemaData, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	var schemaObj entities.Schema
+	// Use a temporary struct for unmarshaling that matches the file structure
+	var fileData struct {
+		Description string              `json:"description" yaml:"description"`
+		Variables   []entities.Variable `json:"variables" yaml:"variables"`
+		Extends     []string            `json:"extends" yaml:"extends"`
+	}
 
 	// Try YAML first, then JSON, then dotenv as fallback
-	if err := yaml.Unmarshal(data, &schemaObj); err != nil {
-		if err := json.Unmarshal(data, &schemaObj); err != nil {
+	if err := yaml.Unmarshal(data, &fileData); err != nil {
+		if err := json.Unmarshal(data, &fileData); err != nil {
 			// Try parsing as dotenv file as fallback
 			dotenvParser := NewAnnotatedDotEnvParser()
 			_, schema, parseErr := dotenvParser.ParseFile(path)
@@ -77,17 +82,19 @@ func (p *SchemaParser) ParseFile(path string) (*SchemaData, error) {
 				Extends:     nil,
 			}, nil
 		}
+		// JSON parsing succeeded
 		return &SchemaData{
-			Description: schemaObj.Description,
-			Variables:   schemaObj.Variables,
-			Extends:     schemaObj.Extends,
+			Description: fileData.Description,
+			Variables:   fileData.Variables,
+			Extends:     fileData.Extends,
 		}, nil
 	}
 
+	// YAML parsing succeeded
 	return &SchemaData{
-		Description: schemaObj.Description,
-		Variables:   schemaObj.Variables,
-		Extends:     schemaObj.Extends,
+		Description: fileData.Description,
+		Variables:   fileData.Variables,
+		Extends:     fileData.Extends,
 	}, nil
 }
 

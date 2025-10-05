@@ -142,6 +142,11 @@ func (sm *SchemaManager) Update(nameOrUUID string, updater func(*Schema) error) 
 // GetByReference loads a schema by reference, handling local:// and remote:// prefixes
 func (sm *SchemaManager) GetByReference(schemaRef string) (*Schema, error) {
 	switch {
+	case strings.HasPrefix(schemaRef, "#/schemas/"):
+		// JSON Pointer style reference: #/schemas/{uuid}
+		uuid := strings.TrimPrefix(schemaRef, "#/schemas/")
+		return sm.GetByID(uuid)
+
 	case strings.HasPrefix(schemaRef, "local://"):
 		// Local schema reference: local://schema-name
 		schemaName := strings.TrimPrefix(schemaRef, "local://")

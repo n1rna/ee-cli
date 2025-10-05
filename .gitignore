@@ -1,3 +1,5 @@
 build/
 ai/
 **/*-test-*/
+**/__pycache__/
+**/*.pyc
