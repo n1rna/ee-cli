@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // EditorInterface defines the methods needed for editing entities
@@ -43,11 +45,13 @@ func EditEntity(
 	}
 	defer func() {
 		if err := os.Remove(tmpFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to remove temporary file: %v\n", err)
+			printer := output.NewPrinter(output.FormatTable, false)
+			printer.Warning(fmt.Sprintf("Failed to remove temporary file: %v", err))
 		}
 	}()
 
-	fmt.Printf("📝 Editing %s using %s...\n", entityName, editorCmd)
+	printer := output.NewPrinter(output.FormatTable, false)
+	printer.Info(fmt.Sprintf("Editing %s using %s...", entityName, editorCmd))
 
 	// Open editor
 	if err := editor.openEditor(editorCmd, tmpFile); err != nil {
@@ -71,7 +75,7 @@ func EditEntity(
 		return fmt.Errorf("failed to save %s: %w", entityName, err)
 	}
 
-	fmt.Printf("✅ %s updated successfully\n", entityName)
+	printer.Success(fmt.Sprintf("%s updated successfully", entityName))
 
 	// Show what changed
 	if changeReporter != nil {
@@ -95,7 +99,8 @@ func (b *BaseEditorCommands) createTempFile(prefix string, data []byte) (string,
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to close temporary file: %v\n", err)
+			printer := output.NewPrinter(output.FormatTable, false)
+			printer.Warning(fmt.Sprintf("Failed to close temporary file: %v", err))
 		}
 	}()
 

@@ -298,19 +298,18 @@ func (c *SchemaCommand) runEdit(cmd *cobra.Command, args []string) error {
 	changeReporter := func(original, edited interface{}) {
 		origSchema := original.(*entities.Schema)
 		editedSchema := edited.(*entities.Schema)
+		printer := output.NewPrinter(output.FormatTable, false)
 
 		if origSchema.Name != editedSchema.Name {
-			fmt.Printf("  Name: %s → %s\n", origSchema.Name, editedSchema.Name)
+			printer.PrintChange("Name", origSchema.Name, editedSchema.Name)
 		}
 		if origSchema.Description != editedSchema.Description {
-			fmt.Printf("  Description updated\n")
+			printer.PrintUpdate("Description updated")
 		}
 		if len(origSchema.Variables) != len(editedSchema.Variables) {
-			fmt.Printf(
-				"  Variables: %d → %d\n",
-				len(origSchema.Variables),
-				len(editedSchema.Variables),
-			)
+			printer.PrintChange("Variables",
+				fmt.Sprintf("%d", len(origSchema.Variables)),
+				fmt.Sprintf("%d", len(editedSchema.Variables)))
 		}
 	}
 

@@ -181,8 +181,9 @@ func (c *RootCommand) printEnvFormat(envMap map[string]string) error {
 	sort.Strings(keys)
 
 	// Print in KEY=VALUE format
+	printer := output.NewPrinter(output.FormatTable, false)
 	for _, key := range keys {
-		fmt.Printf("%s=%s\n", key, envMap[key])
+		printer.Printf("%s=%s\n", key, envMap[key])
 	}
 
 	return nil

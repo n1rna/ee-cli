@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/n1rna/ee-cli/internal/output"
 	"gopkg.in/yaml.v3"
 )
 
@@ -96,15 +97,16 @@ func (p *SheetParser) MergeValues(sheets ...*SheetData) *SheetData {
 // If a schema is provided, it will prompt for each variable defined in the schema
 func (p *SheetParser) ParseInteractive(schemaVariableNames []string) (*SheetData, error) {
 	values := make(map[string]string)
+	printer := output.NewPrinter(output.FormatTable, false)
 
 	if len(schemaVariableNames) > 0 {
 		// Schema-guided interactive creation
-		fmt.Println("Creating config sheet with schema-defined variables...")
-		fmt.Println("Enter values for each variable (press Enter to skip optional variables):")
-		fmt.Println()
+		printer.Println("Creating config sheet with schema-defined variables...")
+		printer.Println("Enter values for each variable (press Enter to skip optional variables):")
+		printer.Println("")
 
 		for _, varName := range schemaVariableNames {
-			fmt.Printf("Enter value for %s: ", varName)
+			printer.Printf("Enter value for %s: ", varName)
 			value, err := p.reader.ReadString('\n')
 			if err != nil {
 				return nil, fmt.Errorf("failed to read value for %s: %w", varName, err)
@@ -117,12 +119,12 @@ func (p *SheetParser) ParseInteractive(schemaVariableNames []string) (*SheetData
 		}
 	} else {
 		// Free-form interactive creation
-		fmt.Println("Creating config sheet interactively...")
-		fmt.Println("Enter key-value pairs (press Enter with empty key to finish):")
-		fmt.Println()
+		printer.Println("Creating config sheet interactively...")
+		printer.Println("Enter key-value pairs (press Enter with empty key to finish):")
+		printer.Println("")
 
 		for {
-			fmt.Print("Enter variable name (or empty to finish): ")
+			printer.Printf("Enter variable name (or empty to finish): ")
 			key, err := p.reader.ReadString('\n')
 			if err != nil {
 				return nil, fmt.Errorf("failed to read variable name: %w", err)
@@ -135,10 +137,10 @@ func (p *SheetParser) ParseInteractive(schemaVariableNames []string) (*SheetData
 
 			// Check for duplicate keys
 			if _, exists := values[key]; exists {
-				fmt.Printf("Warning: Variable %s already exists, overwriting...\n", key)
+				printer.Warning(fmt.Sprintf("Variable %s already exists, overwriting...", key))
 			}
 
-			fmt.Printf("Enter value for %s: ", key)
+			printer.Printf("Enter value for %s: ", key)
 			value, err := p.reader.ReadString('\n')
 			if err != nil {
 				return nil, fmt.Errorf("failed to read value for %s: %w", key, err)

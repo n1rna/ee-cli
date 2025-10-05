@@ -400,19 +400,18 @@ func (c *SheetCommand) runEdit(cmd *cobra.Command, args []string) error {
 	changeReporter := func(original, edited interface{}) {
 		origSheet := original.(*entities.ConfigSheet)
 		editedSheet := edited.(*entities.ConfigSheet)
+		printer := output.NewPrinter(output.FormatTable, false)
 
 		if origSheet.Name != editedSheet.Name {
-			fmt.Printf("  Name: %s → %s\n", origSheet.Name, editedSheet.Name)
+			printer.PrintChange("Name", origSheet.Name, editedSheet.Name)
 		}
 		if origSheet.Description != editedSheet.Description {
-			fmt.Printf("  Description updated\n")
+			printer.PrintUpdate("Description updated")
 		}
 		if len(origSheet.Values) != len(editedSheet.Values) {
-			fmt.Printf(
-				"  Values: %d → %d\n",
-				len(origSheet.Values),
-				len(editedSheet.Values),
-			)
+			printer.PrintChange("Values",
+				fmt.Sprintf("%d", len(origSheet.Values)),
+				fmt.Sprintf("%d", len(editedSheet.Values)))
 		}
 	}
 

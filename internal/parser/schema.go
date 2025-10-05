@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // SchemaParser handles parsing schemas from various sources
@@ -194,21 +195,23 @@ func (p *SchemaParser) parseVariableSpec(spec string) (entities.Variable, error)
 
 // ParseInteractive interactively prompts the user for schema variables
 func (p *SchemaParser) ParseInteractive() (*SchemaData, error) {
-	fmt.Println("Creating new schema...")
-	fmt.Println("For each variable, you'll need to specify:")
-	fmt.Println("- Name (e.g., DATABASE_URL)")
-	fmt.Println("- Type (string/number/boolean/url)")
-	fmt.Println("- Regex pattern (optional)")
-	fmt.Println("- Default value (optional)")
-	fmt.Println("- Required flag (y/n)")
-	fmt.Println()
+	printer := output.NewPrinter(output.FormatTable, false)
+
+	printer.Println("Creating new schema...")
+	printer.Println("For each variable, you'll need to specify:")
+	printer.Println("- Name (e.g., DATABASE_URL)")
+	printer.Println("- Type (string/number/boolean/url)")
+	printer.Println("- Regex pattern (optional)")
+	printer.Println("- Default value (optional)")
+	printer.Println("- Required flag (y/n)")
+	printer.Println("")
 
 	var variables []entities.Variable
 
 	for {
 		var variable entities.Variable
 
-		fmt.Print("Enter variable name (or empty to finish): ")
+		printer.Printf("Enter variable name (or empty to finish): ")
 		name, err := p.reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read variable name: %w", err)
@@ -222,14 +225,14 @@ func (p *SchemaParser) ParseInteractive() (*SchemaData, error) {
 		// Check for duplicate variable names
 		for _, v := range variables {
 			if v.Name == name {
-				fmt.Printf("Warning: Variable %s already exists in schema\n", name)
+				printer.Warning(fmt.Sprintf("Variable %s already exists in schema", name))
 				continue
 			}
 		}
 
 		variable.Name = name
 
-		fmt.Print("Enter variable type (string/number/boolean/url): ")
+		printer.Printf("Enter variable type (string/number/boolean/url): ")
 		varType, err := p.reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read variable type: %w", err)
@@ -240,11 +243,11 @@ func (p *SchemaParser) ParseInteractive() (*SchemaData, error) {
 		case "string", "number", "boolean", "url":
 			variable.Type = varType
 		default:
-			fmt.Printf("Warning: Invalid type %s, defaulting to string\n", varType)
+			printer.Warning(fmt.Sprintf("Invalid type %s, defaulting to string", varType))
 			variable.Type = "string"
 		}
 
-		fmt.Print("Enter regex pattern (optional): ")
+		printer.Printf("Enter regex pattern (optional): ")
 		regex, err := p.reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read regex pattern: %w", err)
@@ -255,7 +258,7 @@ func (p *SchemaParser) ParseInteractive() (*SchemaData, error) {
 			variable.Regex = regex
 		}
 
-		fmt.Print("Enter default value (optional): ")
+		printer.Printf("Enter default value (optional): ")
 		defaultVal, err := p.reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read default value: %w", err)
@@ -266,7 +269,7 @@ func (p *SchemaParser) ParseInteractive() (*SchemaData, error) {
 			variable.Default = defaultVal
 		}
 
-		fmt.Print("Is this variable required? (y/N): ")
+		printer.Printf("Is this variable required? (y/N): ")
 		required, err := p.reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read required flag: %w", err)

@@ -9,11 +9,11 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/storage"
+	"github.com/pterm/pterm"
 )
 
 // Format represents different output formats
@@ -59,26 +59,74 @@ func (p *Printer) printf(format string, args ...interface{}) {
 // Success prints a success message
 func (p *Printer) Success(message string) {
 	if !p.quiet {
-		p.printf("✓ %s\n", message)
+		pterm.Success.Println(message)
 	}
 }
 
 // Error prints an error message
 func (p *Printer) Error(message string) {
-	p.printf("✗ %s\n", message)
+	pterm.Error.Println(message)
 }
 
 // Warning prints a warning message
 func (p *Printer) Warning(message string) {
 	if !p.quiet {
-		p.printf("⚠ %s\n", message)
+		pterm.Warning.Println(message)
 	}
 }
 
 // Info prints an informational message
 func (p *Printer) Info(message string) {
 	if !p.quiet {
-		p.printf("ℹ %s\n", message)
+		pterm.Info.Println(message)
+	}
+}
+
+// Printf prints a formatted message
+func (p *Printer) Printf(format string, args ...interface{}) {
+	if !p.quiet {
+		pterm.Printf(format, args...)
+	}
+}
+
+// Println prints a line
+func (p *Printer) Println(message string) {
+	if !p.quiet {
+		pterm.Println(message)
+	}
+}
+
+// Sprintf returns a formatted string (for building complex messages)
+func (p *Printer) Sprintf(format string, args ...interface{}) string {
+	return pterm.Sprintf(format, args...)
+}
+
+// Debug prints a debug message
+func (p *Printer) Debug(message string) {
+	if !p.quiet {
+		pterm.Debug.Println(message)
+	}
+}
+
+// Fatal prints an error message and exits
+func (p *Printer) Fatal(message string) {
+	pterm.Fatal.Println(message)
+}
+
+// PrintChange prints a change notification (e.g., "Field: old → new")
+func (p *Printer) PrintChange(field, oldValue, newValue string) {
+	if !p.quiet {
+		pterm.Printf("  %s: %s → %s\n",
+			pterm.LightYellow(field),
+			pterm.Gray(oldValue),
+			pterm.LightGreen(newValue))
+	}
+}
+
+// PrintUpdate prints an update notification
+func (p *Printer) PrintUpdate(message string) {
+	if !p.quiet {
+		pterm.Printf("  %s\n", pterm.LightBlue(message))
 	}
 }
 
@@ -144,27 +192,31 @@ func (p *Printer) PrintValues(values map[string]string) error {
 
 // printSchemaTable prints a schema in table format
 func (p *Printer) printSchemaTable(s *entities.Schema) error {
-	p.printf("Schema: %s\n", s.Name)
-	p.printf("ID: %s\n", s.ID)
+	// Print header info
+	pterm.DefaultSection.Println("Schema: " + s.Name)
+	pterm.Println(pterm.Gray("ID: " + s.ID))
 	if s.Description != "" {
-		p.printf("Description: %s\n", s.Description)
+		pterm.Println(pterm.LightCyan(s.Description))
 	}
-	p.printf("Created: %s\n", s.CreatedAt.Format(time.RFC3339))
-	p.printf("Updated: %s\n", s.UpdatedAt.Format(time.RFC3339))
+	pterm.Println(pterm.Gray("Created: " + s.CreatedAt.Format(time.RFC3339)))
+	pterm.Println(pterm.Gray("Updated: " + s.UpdatedAt.Format(time.RFC3339)))
 
 	if len(s.Extends) > 0 {
-		p.printf("Extends: %s\n", strings.Join(s.Extends, ", "))
+		pterm.Println(pterm.Gray("Extends: " + strings.Join(s.Extends, ", ")))
 	}
 
-	p.printf("\nVariables:\n")
+	pterm.Println()
+	pterm.DefaultHeader.Println("Variables")
+
 	if len(s.Variables) == 0 {
-		p.printf("  No variables defined\n")
+		pterm.Info.Println("No variables defined")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tDEFAULT\tREGEX\n")
-	_, _ = fmt.Fprintf(w, "  ----\t----\t--------\t-------\t-----\n")
+	// Build table data
+	tableData := pterm.TableData{
+		{"NAME", "TYPE", "REQUIRED", "DEFAULT", "REGEX"},
+	}
 
 	for _, variable := range s.Variables {
 		required := "No"
@@ -172,22 +224,22 @@ func (p *Printer) printSchemaTable(s *entities.Schema) error {
 			required = "Yes"
 		}
 
-		_, _ = fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
+		tableData = append(tableData, []string{
 			variable.Name,
 			variable.Type,
 			required,
 			variable.Default,
 			variable.Regex,
-		)
+		})
 	}
 
-	return w.Flush()
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 // printSchemaListTable prints a list of schemas in table format
 func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error {
 	if len(summaries) == 0 {
-		p.printf("No schemas found\n")
+		pterm.Info.Println("No schemas found")
 		return nil
 	}
 
@@ -196,9 +248,10 @@ func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error 
 		return summaries[i].Name < summaries[j].Name
 	})
 
-	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
+	// Build table data
+	tableData := pterm.TableData{
+		{"NAME", "DESCRIPTION", "CREATED"},
+	}
 
 	for _, summary := range summaries {
 		desc := summary.Description
@@ -206,45 +259,47 @@ func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error 
 			desc = desc[:47] + "..."
 		}
 
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
+		tableData = append(tableData, []string{
 			summary.Name,
 			desc,
 			summary.CreatedAt.Format("2006-01-02"),
-		)
+		})
 	}
 
-	return w.Flush()
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 // printConfigSheetTable prints a config sheet in table format
 func (p *Printer) printConfigSheetTable(cs *entities.ConfigSheet) error {
-	p.printf("Config Sheet: %s\n", cs.Name)
-	p.printf("ID: %s\n", cs.ID)
+	// Print header info
+	pterm.DefaultSection.Println("Config Sheet: " + cs.Name)
+	pterm.Println(pterm.Gray("ID: " + cs.ID))
 	if cs.Description != "" {
-		p.printf("Description: %s\n", cs.Description)
+		pterm.Println(pterm.LightCyan(cs.Description))
 	}
 
 	if cs.Schema.IsReference() {
-		p.printf("Schema Reference: %s\n", cs.Schema.Ref)
+		pterm.Println(pterm.Gray("Schema Reference: " + cs.Schema.Ref))
 	} else if cs.Schema.IsInline() {
-		p.printf("Schema: Inline (%d variables)\n", len(cs.Schema.Variables))
+		pterm.Println(pterm.Gray(pterm.Sprintf("Schema: Inline (%d variables)", len(cs.Schema.Variables))))
 	}
 
-	p.printf("Created: %s\n", cs.CreatedAt.Format(time.RFC3339))
-	p.printf("Updated: %s\n", cs.UpdatedAt.Format(time.RFC3339))
+	pterm.Println(pterm.Gray("Created: " + cs.CreatedAt.Format(time.RFC3339)))
+	pterm.Println(pterm.Gray("Updated: " + cs.UpdatedAt.Format(time.RFC3339)))
 
 	if len(cs.Extends) > 0 {
-		p.printf("Extends: %s\n", strings.Join(cs.Extends, ", "))
+		pterm.Println(pterm.Gray("Extends: " + strings.Join(cs.Extends, ", ")))
 	}
 
-	p.printf("\nValues:\n")
+	pterm.Println()
+	pterm.DefaultHeader.Println("Values")
 	return p.printValuesTable(cs.Values)
 }
 
 // printConfigSheetListTable prints a list of config sheets in table format
 func (p *Printer) printConfigSheetListTable(summaries []storage.EntitySummary) error {
 	if len(summaries) == 0 {
-		p.printf("No config sheets found\n")
+		pterm.Info.Println("No config sheets found")
 		return nil
 	}
 
@@ -253,9 +308,10 @@ func (p *Printer) printConfigSheetListTable(summaries []storage.EntitySummary) e
 		return summaries[i].Name < summaries[j].Name
 	})
 
-	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "NAME\tDESCRIPTION\tCREATED\n")
-	_, _ = fmt.Fprintf(w, "----\t-----------\t-------\n")
+	// Build table data
+	tableData := pterm.TableData{
+		{"NAME", "DESCRIPTION", "CREATED"},
+	}
 
 	for _, summary := range summaries {
 		desc := summary.Description
@@ -263,20 +319,20 @@ func (p *Printer) printConfigSheetListTable(summaries []storage.EntitySummary) e
 			desc = desc[:47] + "..."
 		}
 
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n",
+		tableData = append(tableData, []string{
 			summary.Name,
 			desc,
 			summary.CreatedAt.Format("2006-01-02"),
-		)
+		})
 	}
 
-	return w.Flush()
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 // printValuesTable prints variable values in table format
 func (p *Printer) printValuesTable(values map[string]string) error {
 	if len(values) == 0 {
-		p.printf("  No values defined\n")
+		pterm.Info.Println("No values defined")
 		return nil
 	}
 
@@ -287,9 +343,10 @@ func (p *Printer) printValuesTable(values map[string]string) error {
 	}
 	sort.Strings(keys)
 
-	w := tabwriter.NewWriter(p.writer, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "  VARIABLE\tVALUE\n")
-	_, _ = fmt.Fprintf(w, "  --------\t-----\n")
+	// Build table data
+	tableData := pterm.TableData{
+		{"VARIABLE", "VALUE"},
+	}
 
 	for _, key := range keys {
 		value := values[key]
@@ -297,10 +354,10 @@ func (p *Printer) printValuesTable(values map[string]string) error {
 		if len(value) > 80 {
 			value = value[:77] + "..."
 		}
-		_, _ = fmt.Fprintf(w, "  %s\t%s\n", key, value)
+		tableData = append(tableData, []string{key, value})
 	}
 
-	return w.Flush()
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 // printJSON prints any object as JSON
