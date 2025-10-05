@@ -2,15 +2,10 @@
 package command
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
@@ -18,15 +13,11 @@ import (
 )
 
 // SheetCommand handles the ee sheet command
-type SheetCommand struct {
-	reader *bufio.Reader
-}
+type SheetCommand struct{}
 
 // NewSheetCommand creates a new ee sheet command
 func NewSheetCommand(groupId string) *cobra.Command {
-	sc := &SheetCommand{
-		reader: bufio.NewReader(os.Stdin),
-	}
+	sc := &SheetCommand{}
 
 	cmd := &cobra.Command{
 		Use:   "sheet",
@@ -60,12 +51,17 @@ func (c *SheetCommand) newCreateCommand() *cobra.Command {
 		Long: `Create a new configuration sheet with values for environment variables.
 
 Examples:
-  # Create standalone config sheet
-  ee sheet create my-config --schema web-service
+  # Create with CLI values
+  ee sheet create my-config --schema web-service --value DATABASE_URL=postgres://localhost --value PORT=5432
 
+  # Import from file
+  ee sheet create my-config --import config.yaml
 
-  # Create interactively
-  ee sheet create my-config`,
+  # Create interactively (free-form)
+  ee sheet create my-config --interactive
+
+  # Create interactively with schema guidance
+  ee sheet create my-config --schema web-service --interactive`,
 		Args: cobra.ExactArgs(1),
 		RunE: c.runCreate,
 	}
@@ -74,7 +70,8 @@ Examples:
 	cmd.Flags().String("description", "", "Sheet description")
 	cmd.Flags().
 		StringToString("value", map[string]string{}, "Set variable values (format: --value KEY=VALUE)")
-	cmd.Flags().String("import", "", "Import values from a file (YAML or JSON)")
+	cmd.Flags().String("import", "", "Import values from a file (YAML, JSON, or dotenv)")
+	cmd.Flags().Bool("interactive", false, "Create config sheet interactively")
 	cmd.Flags().String("format", "table", "Output format (table, json)")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
 
@@ -203,20 +200,51 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 	sheetName := args[0]
 	description, _ := cmd.Flags().GetString("description")
 	schemaName, _ := cmd.Flags().GetString("schema")
-	values, _ := cmd.Flags().GetStringToString("value")
+	cliValues, _ := cmd.Flags().GetStringToString("value")
 	importFile, _ := cmd.Flags().GetString("import")
+	interactive, _ := cmd.Flags().GetBool("interactive")
 
-	// Import values from file if specified
-	if importFile != "" {
-		importedValues, err := c.importValuesFromFile(importFile)
+	sheetParser := parser.NewSheetParser()
+	var sheetData *parser.SheetData
+	var err error
+
+	// Parse values based on input method
+	if interactive {
+		// Interactive mode - if schema is provided, get variable names from it
+		var schemaVarNames []string
+		if schemaName != "" {
+			s, err := manager.Schemas.Get(schemaName)
+			if err != nil {
+				return fmt.Errorf("schema '%s' not found: %w", schemaName, err)
+			}
+			for _, v := range s.Variables {
+				schemaVarNames = append(schemaVarNames, v.Name)
+			}
+		}
+		sheetData, err = sheetParser.ParseInteractive(schemaVarNames)
 		if err != nil {
-			return fmt.Errorf("failed to import values: %w", err)
+			return err
 		}
+	} else if importFile != "" {
+		// File import mode
+		sheetData, err = sheetParser.ParseFile(importFile)
+		if err != nil {
+			return fmt.Errorf("failed to import values from file: %w", err)
+		}
+
 		// Merge with CLI values (CLI values take precedence)
-		for k, v := range values {
-			importedValues[k] = v
+		if len(cliValues) > 0 {
+			cliData, _ := sheetParser.ParseCLIValues(cliValues)
+			sheetData = sheetParser.MergeValues(sheetData, cliData)
 		}
-		values = importedValues
+	} else if len(cliValues) > 0 {
+		// CLI values mode
+		sheetData, err = sheetParser.ParseCLIValues(cliValues)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("must provide values via --value, --import, or --interactive flag")
 	}
 
 	// Create schema reference
@@ -229,10 +257,8 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 		schemaRef.Ref = "#/schemas/" + s.ID
 	}
 
-	// TODO: Add logic for guessing the schema of the sheet
-
 	// Create standalone config sheet
-	cs := entities.NewConfigSheet(sheetName, description, schemaRef, values)
+	cs := entities.NewConfigSheet(sheetName, description, schemaRef, sheetData.Values)
 
 	// Validate using manager's validator
 	validator := manager.GetValidator()
@@ -247,44 +273,6 @@ func (c *SheetCommand) runCreate(cmd *cobra.Command, args []string) error {
 
 	printer.Success(fmt.Sprintf("Successfully created config sheet '%s'", sheetName))
 	return printer.PrintConfigSheet(cs)
-}
-
-func (c *SheetCommand) importValuesFromFile(filename string) (map[string]string, error) {
-	// Detect file format based on extension
-	ext := strings.ToLower(filepath.Ext(filename))
-
-	// If it's a .env file, use the dotenv parser
-	if ext == ".env" || strings.Contains(strings.ToLower(filename), ".env") {
-		p := parser.NewAnnotatedDotEnvParser()
-		values, _, err := p.ParseFile(filename)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse .env file: %w", err)
-		}
-		return values, nil
-	}
-
-	// For other files, read and try YAML/JSON
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	values := make(map[string]string)
-
-	// Try YAML first, then JSON, then dotenv as fallback
-	if err := yaml.Unmarshal(data, &values); err != nil {
-		if err := json.Unmarshal(data, &values); err != nil {
-			// Try parsing as dotenv file as fallback
-			p := parser.NewAnnotatedDotEnvParser()
-			parsedValues, _, parseErr := p.ParseFile(filename)
-			if parseErr != nil {
-				return nil, fmt.Errorf("file is neither valid YAML, JSON, nor dotenv format")
-			}
-			return parsedValues, nil
-		}
-	}
-
-	return values, nil
 }
 
 func (c *SheetCommand) runShow(cmd *cobra.Command, args []string) error {

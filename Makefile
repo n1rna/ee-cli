@@ -48,9 +48,10 @@ deps: ## Download and verify dependencies
 	$(GOMOD) download
 	$(GOMOD) verify
 
-fmt: ## Format code
+format: ## Format code
 	@echo "Formatting code..."
 	$(GOFMT) ./...
+	golangci-lint run --fix
 
 lint: ## Run linter
 	@echo "Running linter..."

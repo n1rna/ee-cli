@@ -2,29 +2,20 @@
 package command
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/output"
 	"github.com/n1rna/ee-cli/internal/parser"
 )
 
-type SchemaCommand struct {
-	reader *bufio.Reader
-}
+type SchemaCommand struct{}
 
 func NewSchemaCommand(groupId string) *cobra.Command {
-	sc := &SchemaCommand{
-		reader: bufio.NewReader(os.Stdin),
-	}
+	sc := &SchemaCommand{}
 
 	cmd := &cobra.Command{
 		Use:   "schema",
@@ -152,295 +143,52 @@ func (c *SchemaCommand) runCreate(cmd *cobra.Command, args []string) error {
 	printer := output.NewPrinter(output.Format(format), quiet)
 
 	schemaName := args[0]
+	schemaParser := parser.NewSchemaParser()
+
+	var schemaData *parser.SchemaData
+	var err error
 
 	// Check if we should import from file
 	if importFile, _ := cmd.Flags().GetString("import"); importFile != "" {
-		return c.importSchema(manager, printer, schemaName, importFile)
-	}
-
-	// Check if we should create via CLI flags
-	if variables, _ := cmd.Flags().GetStringSlice("variable"); len(variables) > 0 {
+		schemaData, err = schemaParser.ParseFile(importFile)
+		if err != nil {
+			return fmt.Errorf("failed to parse schema from file: %w", err)
+		}
+	} else if variables, _ := cmd.Flags().GetStringSlice("variable"); len(variables) > 0 {
+		// Create via CLI flags
 		description, _ := cmd.Flags().GetString("description")
-		return c.createSchemaFromCLI(manager, printer, schemaName, description, variables)
-	}
-
-	return c.createSchemaInteractively(manager, printer, schemaName)
-}
-
-func (c *SchemaCommand) createSchemaInteractively(
-	manager *entities.Manager,
-	printer *output.Printer,
-	name string,
-) error {
-	printer.Info("Creating new schema...")
-	printer.Info("For each variable, you'll need to specify:")
-	printer.Info("- Name (e.g., DATABASE_URL)")
-	printer.Info("- Type (string/number/boolean/url)")
-	printer.Info("- Regex pattern (optional)")
-	printer.Info("- Default value (optional)")
-	printer.Info("- Required flag (y/n)")
-
-	var variables []entities.Variable
-
-	for {
-		var variable entities.Variable
-
-		fmt.Print("Enter variable name (or empty to finish): ")
-		name, err := c.reader.ReadString('\n')
+		schemaData, err = schemaParser.ParseCLISpecs(description, variables)
 		if err != nil {
-			return fmt.Errorf("failed to read variable name: %w", err)
+			return err
 		}
-
-		name = strings.TrimSpace(name)
-		if name == "" {
-			break
+		for _, v := range schemaData.Variables {
+			printer.Info(fmt.Sprintf("Added variable: %s (%s)", v.Name, v.Type))
 		}
-
-		// Check for duplicate variable names
-		for _, v := range variables {
-			if v.Name == name {
-				printer.Warning(fmt.Sprintf("Variable %s already exists in schema", name))
-				continue
-			}
-		}
-
-		variable.Name = name
-
-		fmt.Print("Enter variable type (string/number/boolean/url): ")
-		varType, err := c.reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read variable type: %w", err)
-		}
-
-		varType = strings.TrimSpace(strings.ToLower(varType))
-		switch varType {
-		case "string", "number", "boolean", "url":
-			variable.Type = varType
-		default:
-			printer.Warning(fmt.Sprintf("Invalid type %s, defaulting to string", varType))
-			variable.Type = "string"
-		}
-
-		fmt.Print("Enter regex pattern (optional): ")
-		regex, err := c.reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read regex pattern: %w", err)
-		}
-
-		regex = strings.TrimSpace(regex)
-		if regex != "" {
-			variable.Regex = regex
-		}
-
-		fmt.Print("Enter default value (optional): ")
-		defaultVal, err := c.reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read default value: %w", err)
-		}
-
-		defaultVal = strings.TrimSpace(defaultVal)
-		if defaultVal != "" {
-			variable.Default = defaultVal
-		}
-
-		fmt.Print("Is this variable required? (y/N): ")
-		required, err := c.reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read required flag: %w", err)
-		}
-
-		required = strings.TrimSpace(strings.ToLower(required))
-		variable.Required = required == "y" || required == "yes"
-
-		variables = append(variables, variable)
-	}
-
-	if len(variables) == 0 {
-		return fmt.Errorf("schema must contain at least one variable")
-	}
-
-	// Create schema using the manager
-	s, err := manager.Schemas.Create(name, "Schema created interactively", variables, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-
-	printer.Success(
-		fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)),
-	)
-	return printer.PrintSchema(s)
-}
-
-// createSchemaFromCLI creates a schema from CLI flags
-func (c *SchemaCommand) createSchemaFromCLI(
-	manager *entities.Manager,
-	printer *output.Printer,
-	name, description string,
-	variableSpecs []string,
-) error {
-	printer.Info(fmt.Sprintf("Creating schema '%s' from CLI specifications...", name))
-
-	variables := []entities.Variable{}
-
-	// Parse each variable specification
-	for _, varSpec := range variableSpecs {
-		variable, err := c.parseVariableSpec(varSpec)
-		if err != nil {
-			return fmt.Errorf("invalid variable specification '%s': %w", varSpec, err)
-		}
-
-		// Check for duplicate variable names
-		for _, existingVar := range variables {
-			if existingVar.Name == variable.Name {
-				return fmt.Errorf("duplicate variable name '%s'", variable.Name)
-			}
-		}
-
-		variables = append(variables, variable)
-		printer.Info(fmt.Sprintf("Added variable: %s (%s)", variable.Name, variable.Type))
-	}
-
-	if len(variables) == 0 {
-		return fmt.Errorf("schema must contain at least one variable")
-	}
-
-	// Create schema using the manager
-	s, err := manager.Schemas.Create(name, description, variables, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create schema: %w", err)
-	}
-
-	printer.Success(
-		fmt.Sprintf("Successfully created schema '%s' with %d variables", name, len(variables)),
-	)
-	return printer.PrintSchema(s)
-}
-
-// parseVariableSpec parses a variable specification in the format: name:type:title:required[:default]
-func (c *SchemaCommand) parseVariableSpec(spec string) (entities.Variable, error) {
-	// Split into at most 5 parts to handle cases where default values contain colons
-	parts := strings.SplitN(spec, ":", 5)
-	if len(parts) < 4 {
-		return entities.Variable{}, fmt.Errorf(
-			"format should be 'name:type:title:required[:default]', got %d parts",
-			len(parts),
-		)
-	}
-
-	name := strings.TrimSpace(parts[0])
-	varType := strings.TrimSpace(strings.ToLower(parts[1]))
-	title := strings.TrimSpace(parts[2])
-	requiredStr := strings.TrimSpace(strings.ToLower(parts[3]))
-
-	// Validate name
-	if name == "" {
-		return entities.Variable{}, fmt.Errorf("variable name cannot be empty")
-	}
-
-	// Validate type
-	validTypes := map[string]bool{"string": true, "number": true, "boolean": true, "url": true}
-	if !validTypes[varType] {
-		return entities.Variable{}, fmt.Errorf(
-			"invalid type '%s', must be one of: string, number, boolean, url",
-			varType,
-		)
-	}
-
-	// Parse required flag
-	var required bool
-	switch requiredStr {
-	case "true", "t", "1", "yes", "y":
-		required = true
-	case "false", "f", "0", "no", "n":
-		required = false
-	default:
-		return entities.Variable{}, fmt.Errorf(
-			"invalid required value '%s', must be true/false",
-			requiredStr,
-		)
-	}
-
-	// Parse default value (optional)
-	var defaultValue string
-	if len(parts) == 5 {
-		defaultValue = strings.TrimSpace(parts[4])
-	}
-
-	return entities.Variable{
-		Name:     name,
-		Type:     varType,
-		Title:    title,
-		Required: required,
-		Default:  defaultValue,
-	}, nil
-}
-
-func (c *SchemaCommand) importSchema(
-	manager *entities.Manager,
-	printer *output.Printer,
-	name string,
-	filename string,
-) error {
-	// Detect file format based on extension
-	ext := strings.ToLower(filepath.Ext(filename))
-
-	var schemaObj entities.Schema
-	var variables []entities.Variable
-	var description string
-	var extends []string
-
-	// If it's a .env file, use the dotenv parser to extract schema
-	if ext == ".env" || strings.Contains(strings.ToLower(filename), ".env") {
-		p := parser.NewAnnotatedDotEnvParser()
-		_, schema, err := p.ParseFile(filename)
-		if err != nil {
-			return fmt.Errorf("failed to parse .env file: %w", err)
-		}
-		variables = schema.Variables
-		description = schema.Description
 	} else {
-		// For other files, read and try YAML/JSON
-		data, err := os.ReadFile(filename)
+		// Interactive mode
+		schemaData, err = schemaParser.ParseInteractive()
 		if err != nil {
-			return fmt.Errorf("failed to read import file: %w", err)
-		}
-
-		// Try YAML first, then JSON, then dotenv as fallback
-		if err := yaml.Unmarshal(data, &schemaObj); err != nil {
-			if err := json.Unmarshal(data, &schemaObj); err != nil {
-				// Try parsing as dotenv file as fallback
-				p := parser.NewAnnotatedDotEnvParser()
-				_, schema, parseErr := p.ParseFile(filename)
-				if parseErr != nil {
-					return fmt.Errorf("file is neither valid YAML, JSON, nor dotenv format: %w", parseErr)
-				}
-				variables = schema.Variables
-				description = schema.Description
-			} else {
-				variables = schemaObj.Variables
-				description = schemaObj.Description
-				extends = schemaObj.Extends
-			}
-		} else {
-			variables = schemaObj.Variables
-			description = schemaObj.Description
-			extends = schemaObj.Extends
+			return err
 		}
 	}
 
 	// Create schema using the manager
 	s, err := manager.Schemas.Create(
-		name,
-		description,
-		variables,
-		extends,
+		schemaName,
+		schemaData.Description,
+		schemaData.Variables,
+		schemaData.Extends,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
 	printer.Success(
-		fmt.Sprintf("Successfully imported schema '%s' with %d variables", name, len(s.Variables)),
+		fmt.Sprintf(
+			"Successfully created schema '%s' with %d variables",
+			schemaName,
+			len(s.Variables),
+		),
 	)
 	return printer.PrintSchema(s)
 }
