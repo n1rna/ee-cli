@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pterm/pterm"
+
 	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/storage"
-	"github.com/pterm/pterm"
 )
 
 // Format represents different output formats

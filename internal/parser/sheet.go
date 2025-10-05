@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/n1rna/ee-cli/internal/output"
 	"gopkg.in/yaml.v3"
+
+	"github.com/n1rna/ee-cli/internal/output"
 )
 
 // SheetParser handles parsing config sheet values from various sources
