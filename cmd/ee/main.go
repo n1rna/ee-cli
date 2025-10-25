@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version     = "0.5.2"
+	version     = "0.5.3"
 	cfgBaseDir  string
 	globalFlags = struct {
 		debug bool
@@ -25,6 +25,9 @@ func main() {
 	// Create root command using the dedicated root command module
 	rootCmd := command.NewRootCommand()
 	rootCmd.Version = version
+
+	// Only show usage for invalid commands/arguments, not for runtime errors
+	rootCmd.SilenceUsage = true
 
 	// Set up persistent pre-run for entity manager and command context initialization
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
