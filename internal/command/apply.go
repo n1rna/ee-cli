@@ -87,12 +87,10 @@ func (c *ApplyCommand) Run(cmd *cobra.Command, args []string) error {
 	envOrSheetName := args[0]
 	var commandArgs []string
 
-	// Find the separator "--" and split command args
-	for i, arg := range args {
-		if arg == "--" {
-			if i+1 < len(args) {
-				commandArgs = args[i+1:]
-			}
+	// Get all original arguments from os.Args
+	for i, arg := range os.Args {
+		if arg == "--" && i < len(os.Args)-1 {
+			commandArgs = os.Args[i+1:]
 			break
 		}
 	}
