@@ -3,6 +3,8 @@ package util
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
@@ -11,10 +13,11 @@ import (
 
 // CommandContext provides unified context for all commands, including project detection
 type CommandContext struct {
-	Config        *config.Config
-	Manager       *entities.Manager
-	ProjectConfig *parser.ProjectConfig
-	IsInProject   bool
+	Config           *config.Config
+	Manager          *entities.Manager
+	ProjectConfig    *parser.ProjectConfig
+	IsInProject      bool
+	ProjectLoadError error // Stores any error from loading project config
 }
 
 // NewCommandContext creates a new command context with automatic project detection
@@ -26,14 +29,15 @@ func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
 	}
 
 	// Try to load project configuration
-	projectConfig, err := parser.LoadProjectConfig()
-	isInProject := err == nil
+	projectConfig, projectLoadErr := parser.LoadProjectConfig()
+	isInProject := projectLoadErr == nil
 
 	context := &CommandContext{
-		Config:        cfg,
-		Manager:       manager,
-		ProjectConfig: projectConfig,
-		IsInProject:   isInProject,
+		Config:           cfg,
+		Manager:          manager,
+		ProjectConfig:    projectConfig,
+		IsInProject:      isInProject,
+		ProjectLoadError: projectLoadErr,
 	}
 
 	return context, nil
@@ -42,6 +46,25 @@ func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
 // RequireProjectContext ensures that the command is running in a project context
 func (ctx *CommandContext) RequireProjectContext() error {
 	if !ctx.IsInProject {
+		// If there was an error loading the project, provide detailed feedback
+		if ctx.ProjectLoadError != nil {
+			// Check if .ee file exists but is malformed
+			if _, statErr := os.Stat(config.ProjectConfigFileName); statErr == nil {
+				// File exists but couldn't be loaded - provide specific error
+				if strings.Contains(ctx.ProjectLoadError.Error(), "failed to parse") {
+					return fmt.Errorf("found %s file but it contains invalid JSON: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+				}
+				if strings.Contains(ctx.ProjectLoadError.Error(), "missing required") {
+					return fmt.Errorf("found %s file but it's incomplete: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+				}
+				if strings.Contains(ctx.ProjectLoadError.Error(), "failed to read") {
+					return fmt.Errorf("found %s file but cannot read it: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+				}
+				// Generic error for file that exists but failed to load
+				return fmt.Errorf("found %s file but failed to load it: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+			}
+		}
+		// File doesn't exist - standard message
 		return fmt.Errorf(
 			"this command requires a %s file (not in a project directory)",
 			config.ProjectConfigFileName,

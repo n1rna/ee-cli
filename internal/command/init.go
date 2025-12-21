@@ -264,15 +264,10 @@ func (c *InitCommand) createSampleEnvFile(
 	schema parser.ProjectConfigSchema,
 	manager *entities.Manager,
 ) error {
-	content := fmt.Sprintf("# %s environment configuration\n", filename)
-	content += "# Edit the values below according to your needs\n\n"
-
 	var variables map[string]entities.Variable
 
 	// Handle schema reference vs inline schema
 	if schema.Ref != "" {
-		content += fmt.Sprintf("# schema: %s\n\n", schema.Ref)
-
 		// Try to load the referenced schema
 		loadedVars, err := c.loadSchemaVariables(schema.Ref, manager)
 		if err != nil {
@@ -280,40 +275,32 @@ func (c *InitCommand) createSampleEnvFile(
 		}
 		variables = loadedVars
 	} else {
-		content += "# schema: inline\n\n"
 		variables = schema.Variables
 	}
 
-	// Add sample variables
-	if len(variables) > 0 {
-		for _, variable := range variables {
-			// Add variable annotations
-			if variable.Title != "" {
-				content += fmt.Sprintf("# title: %s\n", variable.Title)
-			}
-			if variable.Type != "string" {
-				content += fmt.Sprintf("# type: %s\n", variable.Type)
-			}
-			if variable.Default != "" {
-				content += fmt.Sprintf("# default: %s\n", variable.Default)
-			}
-			if variable.Required {
-				content += "# required: true\n"
-			}
-
-			// Add the variable with default value
-			value := variable.Default
-			if value == "" {
-				value = "" // Empty value for user to fill in
-			}
-			content += fmt.Sprintf("%s=%s\n\n", variable.Name, value)
-		}
-	} else {
-		content += "# No variables defined in schema\n"
-		content += "# Add your environment variables below\n\n"
+	// Prepare values map with default values
+	values := make(map[string]string)
+	varSlice := make([]entities.Variable, 0, len(variables))
+	for _, variable := range variables {
+		values[variable.Name] = variable.Default
+		varSlice = append(varSlice, variable)
 	}
 
-	return os.WriteFile(filename, []byte(content), 0o644)
+	// Create schema entity for export
+	schemaEntity := &entities.Schema{
+		Variables: varSlice,
+	}
+
+	// Set schema reference in description if available
+	if schema.Ref != "" {
+		schemaEntity.Description = fmt.Sprintf("References schema: %s", schema.Ref)
+	} else {
+		schemaEntity.Description = "inline"
+	}
+
+	// Use the reusable dotenv parser to export the file
+	dotenvParser := parser.NewAnnotatedDotEnvParser()
+	return dotenvParser.ExportAnnotatedDotEnv(values, schemaEntity, filename)
 }
 
 // loadSchemaVariables loads variables from a schema reference using the schema manager

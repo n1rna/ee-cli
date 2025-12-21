@@ -90,6 +90,7 @@ func main() {
 		command.NewInitCommand("global"),   // Project initialization
 		command.NewApplyCommand("global"),  // Apply environment variables
 		command.NewVerifyCommand("global"), // Verify project configuration
+		command.NewAuthCommand("global"),   // Authentication
 
 		// Entity Management - local entity operations
 		command.NewSchemaCommand("entities"), // Schema management
