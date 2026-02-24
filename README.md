@@ -22,17 +22,17 @@
 Install the latest version with a single command:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/n1rna/ee-cli/main/install.sh | sh
 ```
 
 ### Alternative Installation Methods
 
 ```bash
 # Using Go
-go install github.com/n1rna/ee/cmd/ee@latest
+go install github.com/n1rna/ee-cli/cmd/ee@latest
 
 # Download specific version
-curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh -s -- --version v1.0.0
+curl -sSfL https://raw.githubusercontent.com/n1rna/ee-cli/main/install.sh | sh -s -- --version v1.0.0
 
 # From source
 git clone https://github.com/n1rna/ee.git
@@ -42,7 +42,7 @@ make install
 
 ### Manual Installation
 
-1. Download the appropriate binary for your platform from the [releases page](https://github.com/n1rna/ee/releases)
+1. Download the appropriate binary for your platform from the [releases page](https://github.com/n1rna/ee-cli/releases)
 2. Make it executable: `chmod +x ee`
 3. Move it to your PATH: `sudo mv ee /usr/local/bin/`
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ee installer script
-# Usage: curl -sSfL https://raw.githubusercontent.com/n1rna/ee/main/install.sh | sh
+# Usage: curl -sSfL https://raw.githubusercontent.com/n1rna/ee-cli/main/install.sh | sh
 
 set -e
 
