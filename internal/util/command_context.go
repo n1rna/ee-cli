@@ -58,16 +58,32 @@ func (ctx *CommandContext) RequireProjectContext() error {
 			if _, statErr := os.Stat(config.ProjectConfigFileName); statErr == nil {
 				// File exists but couldn't be loaded - provide specific error
 				if strings.Contains(ctx.ProjectLoadError.Error(), "failed to parse") {
-					return fmt.Errorf("found %s file but it contains invalid JSON: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+					return fmt.Errorf(
+						"found %s file but it contains invalid JSON: %w",
+						config.ProjectConfigFileName,
+						ctx.ProjectLoadError,
+					)
 				}
 				if strings.Contains(ctx.ProjectLoadError.Error(), "missing required") {
-					return fmt.Errorf("found %s file but it's incomplete: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+					return fmt.Errorf(
+						"found %s file but it's incomplete: %w",
+						config.ProjectConfigFileName,
+						ctx.ProjectLoadError,
+					)
 				}
 				if strings.Contains(ctx.ProjectLoadError.Error(), "failed to read") {
-					return fmt.Errorf("found %s file but cannot read it: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+					return fmt.Errorf(
+						"found %s file but cannot read it: %w",
+						config.ProjectConfigFileName,
+						ctx.ProjectLoadError,
+					)
 				}
 				// Generic error for file that exists but failed to load
-				return fmt.Errorf("found %s file but failed to load it: %w", config.ProjectConfigFileName, ctx.ProjectLoadError)
+				return fmt.Errorf(
+					"found %s file but failed to load it: %w",
+					config.ProjectConfigFileName,
+					ctx.ProjectLoadError,
+				)
 			}
 		}
 		// File doesn't exist - standard message

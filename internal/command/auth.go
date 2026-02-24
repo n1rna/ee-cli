@@ -146,7 +146,7 @@ func (c *AuthCommand) Run(cmd *cobra.Command, args []string) error {
 		// Shutdown server
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		c.server.Shutdown(ctx)
+		_ = c.server.Shutdown(ctx)
 
 		// Exchange token code for access token
 		printer.Info("Exchanging token code for access token...")
@@ -170,7 +170,7 @@ func (c *AuthCommand) Run(cmd *cobra.Command, args []string) error {
 		// Shutdown server on timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		c.server.Shutdown(ctx)
+		_ = c.server.Shutdown(ctx)
 
 		return fmt.Errorf("authentication timeout - no response received within 5 minutes")
 	}
@@ -190,7 +190,7 @@ func (c *AuthCommand) handleCallback(w http.ResponseWriter, r *http.Request) {
 		// Success response
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -275,7 +275,7 @@ func (c *AuthCommand) exchangeToken(apiURL, tokenCode string) (string, time.Time
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -305,7 +305,7 @@ func (c *AuthCommand) storeToken(token, apiURL string, expiresAt time.Time) erro
 
 	// Store token in a credentials file
 	credsPath := filepath.Join(cfg.BaseDir, "credentials.json")
-	creds := map[string]interface{}{
+	creds := map[string]any{
 		"access_token": token,
 		"api_url":      apiURL,
 		"expires_at":   expiresAt.Format(time.RFC3339),
@@ -318,7 +318,7 @@ func (c *AuthCommand) storeToken(token, apiURL string, expiresAt time.Time) erro
 	}
 
 	// Write with restricted permissions
-	if err := os.WriteFile(credsPath, data, 0600); err != nil {
+	if err := os.WriteFile(credsPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write credentials: %w", err)
 	}
 
@@ -392,7 +392,7 @@ func LoadCredentials() (token, apiURL string, err error) {
 		return "", "", fmt.Errorf("failed to read credentials: %w", err)
 	}
 
-	var creds map[string]interface{}
+	var creds map[string]any
 	if err := json.Unmarshal(data, &creds); err != nil {
 		return "", "", fmt.Errorf("failed to parse credentials: %w", err)
 	}

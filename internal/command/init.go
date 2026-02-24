@@ -110,10 +110,10 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 		Schema:  schema,
 		Environments: map[string]parser.EnvironmentDefinition{
 			"development": {
-				Sheets: []interface{}{".env.development"},
+				Sheets: []any{".env.development"},
 			},
 			"production": {
-				Sheets: []interface{}{".env.production"},
+				Sheets: []any{".env.production"},
 			},
 		},
 	}

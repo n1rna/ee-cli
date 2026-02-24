@@ -116,7 +116,9 @@ func (c *HydrateCommand) Run(cmd *cobra.Command, args []string) error {
 }
 
 // loadSchema loads the project schema variables (inline or referenced)
-func (c *HydrateCommand) loadSchema(context *util.CommandContext) (map[string]entities.Variable, error) {
+func (c *HydrateCommand) loadSchema(
+	context *util.CommandContext,
+) (map[string]entities.Variable, error) {
 	schema := context.ProjectConfig.Schema
 
 	// Inline schema
