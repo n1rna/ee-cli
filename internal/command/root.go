@@ -29,8 +29,9 @@ func NewRootCommand() *cobra.Command {
 It supports schema validation, multiple environments, and inheritance.
 
 When run without subcommands, displays all environment variables in the current shell.`,
-		RunE:         rc.Run,
-		SilenceUsage: true, // Don't show usage on RunE errors
+		RunE:          rc.Run,
+		SilenceUsage:  true, // Don't show usage on RunE errors
+		SilenceErrors: true,
 	}
 
 	// Add flags for filtering and formatting

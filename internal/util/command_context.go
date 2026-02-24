@@ -29,7 +29,13 @@ func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
 	}
 
 	// Try to load project configuration
-	projectConfig, projectLoadErr := parser.LoadProjectConfig()
+	var projectConfig *parser.ProjectConfig
+	var projectLoadErr error
+	if cfg.ConfigFile != "" {
+		projectConfig, projectLoadErr = parser.LoadProjectConfigFromPath(cfg.ConfigFile)
+	} else {
+		projectConfig, projectLoadErr = parser.LoadProjectConfig()
+	}
 	isInProject := projectLoadErr == nil
 
 	context := &CommandContext{

@@ -17,6 +17,9 @@ type Config struct {
 	// BaseDir is the root directory for ee storage
 	BaseDir string
 
+	// ConfigFile is an optional path to the project config file (default: .ee in cwd)
+	ConfigFile string
+
 	// API settings
 	API APIConfig
 }

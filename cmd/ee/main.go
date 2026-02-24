@@ -16,6 +16,7 @@ import (
 var (
 	version     = "0.5.3"
 	cfgBaseDir  string
+	cfgFile     string
 	globalFlags = struct {
 		debug bool
 	}{}
@@ -46,6 +47,11 @@ func main() {
 			}
 		}
 
+		// Override config file if specified via flag
+		if cfgFile != "" {
+			cfg.ConfigFile = cfgFile
+		}
+
 		// Initialize entity manager
 		entityManager, err := entities.NewManager(cfg)
 		if err != nil {
@@ -68,6 +74,8 @@ func main() {
 	// Add global flags
 	rootCmd.PersistentFlags().StringVar(&cfgBaseDir, "dir", "",
 		"Base directory for ee storage (default: $EE_HOME or ~/.ee)")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "",
+		"Path to project config file (default: .ee in current directory)")
 	rootCmd.PersistentFlags().BoolVar(&globalFlags.debug, "debug", false, "Enable debug output")
 
 	// Add command groups
@@ -87,18 +95,19 @@ func main() {
 	// Add commands organized by groups
 	rootCmd.AddCommand(
 		// Global Commands - basic project operations
-		command.NewInitCommand("global"),   // Project initialization
-		command.NewApplyCommand("global"),  // Apply environment variables
-		command.NewVerifyCommand("global"), // Verify project configuration
-		command.NewAuthCommand("global"),   // Authentication
+		command.NewInitCommand("global"),    // Project initialization
+		command.NewApplyCommand("global"),   // Apply environment variables
+		command.NewHydrateCommand("global"), // Generate env file from schema + shell env
+		command.NewVerifyCommand("global"),  // Verify project configuration
+		command.NewAuthCommand("global"),    // Authentication
 
 		// Entity Management - local entity operations
 		command.NewSchemaCommand("entities"), // Schema management
 		command.NewSheetCommand("entities"),  // Config sheet management
 
 		// Remote Operations - require authentication
-		command.NewPushCommand("authenticated"), // Push to remote
-		command.NewPullCommand("authenticated"), // Pull from remote
+		// command.NewPushCommand("authenticated"), // Push to remote
+		// command.NewPullCommand("authenticated"), // Pull from remote
 		// command.NewUICommand("authenticated"),     // Terminal user interface - TODO: refactor
 		// command.NewRemoteCommand("authenticated"), // Remote configuration - TODO: refactor
 	)
@@ -108,7 +117,6 @@ func main() {
 
 	// Execute
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
