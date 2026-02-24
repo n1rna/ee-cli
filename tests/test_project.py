@@ -133,7 +133,9 @@ class TestProjectEnvironments:
         # Verify command recognizes project context
         result = ee_runner(["verify"], cwd=temp_project_dir, check=False)
         # Command should recognize we're in a project (even if verification fails due to missing sheets)
-        assert ".ee" in result.stderr or "project" in result.stderr.lower()
+        # Verify reports issues to stdout when running within a project context
+        assert result.returncode != 0
+        assert "issue" in result.stdout.lower() or "staging" in result.stdout
 
 
 class TestProjectVerify:
