@@ -127,29 +127,19 @@ install_binary() {
     # Make binary executable
     chmod +x "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"
 
-    # Determine install location: pick the first candidate that's in PATH and writable
-    local install_dir=""
-    local candidate_dirs="/usr/local/bin $HOME/.local/bin $HOME/bin"
-
-    for dir in $candidate_dirs; do
-        case ":$PATH:" in
-            *":$dir:"*)
-                if [ -w "$dir" ] || mkdir -p "$dir" 2>/dev/null; then
-                    install_dir="$dir"
-                    break
-                fi
-                debug "$dir is in PATH but not writable, skipping"
-                ;;
-        esac
-    done
-
-    # Fallback: use ~/.local/bin and warn about PATH
-    if [ -z "$install_dir" ]; then
+    # Determine install location
+    local install_dir
+    if [ -w "/usr/local/bin" ]; then
+        install_dir="/usr/local/bin"
+    elif [ -d "$HOME/.local/bin" ]; then
         install_dir="$HOME/.local/bin"
         mkdir -p "$install_dir"
-        warn "$install_dir was not found in your PATH"
-        warn "Add this to your shell profile:"
-        warn "  export PATH=\"$install_dir:\$PATH\""
+    elif [ -d "$HOME/bin" ]; then
+        install_dir="$HOME/bin"
+    else
+        install_dir="$HOME/.local/bin"
+        mkdir -p "$install_dir"
+        warn "Created directory $install_dir - make sure it's in your PATH"
     fi
 
     # Install binary
