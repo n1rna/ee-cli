@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	version     = "0.6.0"
+	version     = "0.7.0"
 	cfgBaseDir  string
 	cfgFile     string
 	globalFlags = struct {
