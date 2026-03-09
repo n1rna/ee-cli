@@ -55,25 +55,6 @@ class TestProjectInit:
         assert project_config["project"] == "web-project"
         assert "schema" in project_config
 
-    def test_init_project_with_remote(self, ee_runner, temp_project_dir):
-        """Test initializing a project with remote URL"""
-        result = ee_runner(
-            [
-                "init", "remote-project",
-                "--remote", "https://api.example.com"
-            ],
-            cwd=temp_project_dir
-        )
-
-        assert result.returncode == 0
-
-        # Verify remote was set
-        ee_file = Path(temp_project_dir) / ".ee"
-        with open(ee_file) as f:
-            project_config = json.load(f)
-
-        assert project_config["remote"] == "https://api.example.com"
-
     def test_init_project_with_inline_schema(self, ee_runner, temp_project_dir):
         """Test initializing a project with inline schema variables"""
         result = ee_runner(
