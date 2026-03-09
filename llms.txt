@@ -809,21 +809,27 @@ steps:
 
 ---
 
-## GitHub Action (ee-action) Reference
+## GitHub Actions (ee-action) Reference
 
-[ee-action](https://github.com/n1rna/ee-action) is a reusable GitHub Action that generates environment files from `.ee` config using the ee CLI.
+[ee-action](https://github.com/n1rna/ee-action) provides two reusable GitHub Actions for the ee CLI:
 
-### How ee-action Works
+| Action | Usage | Description |
+|--------|-------|-------------|
+| **Hydrate** | `n1rna/ee-action@v1` | Generate env files from GitHub secrets + schema defaults |
+| **Push** | `n1rna/ee-action/push@v1` | Push env secrets to GitHub or Cloudflare |
 
-1. **Installs the ee CLI** from GitHub releases (auto-detects OS and architecture)
-2. **Writes `gh_secret`** (a multi-line `KEY=VALUE` string from a GitHub secret) to a temp file
-3. **Runs `ee apply`** on the temp file to load the secret values as environment variables
-4. **Runs `ee hydrate`** in that context to resolve schema variables and produce the output file
+### Hydrate Action (`n1rna/ee-action@v1`)
+
+Generates environment files from a bundled GitHub secret using `ee hydrate`.
+
+**How it works:**
+1. Installs the ee CLI from GitHub releases (auto-detects OS and architecture)
+2. Writes `gh_secret` (a multi-line `KEY=VALUE` string) to a temp file
+3. Runs `ee apply` on the temp file to load the secret values as environment variables
+4. Runs `ee hydrate` in that context to resolve schema variables and produce the output file
 5. Cleans up the temp file
 
-This pairs with `ee push github` which pushes your `.env` file as a bundled `KEY=VALUE` GitHub secret.
-
-### Inputs
+**Inputs:**
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
@@ -834,20 +840,104 @@ This pairs with `ee push github` which pushes your `.env` file as a bundled `KEY
 | `format` | No | `dotenv` | Output format: `dotenv`, `json`, `yaml` |
 | `ee_version` | No | `latest` | ee CLI version to install (e.g., `v0.8.2`) |
 
+### Push Action (`n1rna/ee-action/push@v1`)
+
+Pushes environment secrets from `.env` files to GitHub Actions secrets or Cloudflare Workers. Useful when you have a repo dedicated to managing environment files and want to sync them to remote targets on commit.
+
+**How it works:**
+1. Installs the ee CLI from GitHub releases (auto-detects OS and architecture)
+2. Installs wrangler if a Cloudflare API token is provided
+3. Runs `ee push` with the configured origin, environment, and mode
+
+**Inputs:**
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `environment` | Yes | — | Target environment name to push |
+| `config_path` | No | `.ee` | Path to the `.ee` config file |
+| `origin` | No | *(auto)* | Origin name (auto-resolved if only one configured) |
+| `mode` | No | *(from config)* | Override push mode: `bundled` or `individual` |
+| `dry_run` | No | `false` | Preview what would be pushed without executing |
+| `gh_token` | No | — | GitHub token for `gh` CLI (required for GitHub origins) |
+| `cloudflare_api_token` | No | — | Cloudflare API token for `wrangler` (required for Cloudflare origins) |
+| `ee_version` | No | `latest` | ee CLI version to install |
+
+**Push to GitHub:**
+
+```yaml
+- name: Push secrets to GitHub
+  uses: n1rna/ee-action/push@v1
+  with:
+    environment: production
+    config_path: .ee
+    origin: github
+    gh_token: ${{ secrets.GH_PAT }}
+```
+
+> Note: `GITHUB_TOKEN` cannot create/update secrets in other repos. Use a PAT with `repo` scope.
+
+**Push to Cloudflare Workers:**
+
+```yaml
+- name: Push secrets to Cloudflare
+  uses: n1rna/ee-action/push@v1
+  with:
+    environment: production
+    config_path: .ee
+    origin: cloudflare
+    cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
 ### End-to-End Workflow
 
-```bash
-# LOCAL: Push secrets to GitHub (bundled mode creates a single KEY=VALUE secret)
-ee push github production
-# This creates/updates the secret ENV_PRODUCTION in your GitHub repo
+**Central env repo** pushes secrets to targets on commit:
 
-# GITHUB ACTIONS: Hydrate the env file from the secret
-# - uses: n1rna/ee-action@v1
-#   with:
-#     environment: production
-#     config_path: .ee
-#     env_file: .env.production
-#     gh_secret: ${{ secrets.ENV_PRODUCTION }}
+```yaml
+# env-repo/.github/workflows/sync-secrets.yml
+name: Sync Secrets
+on:
+  push:
+    branches: [main]
+
+jobs:
+  push-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push API secrets to GitHub
+        uses: n1rna/ee-action/push@v1
+        with:
+          environment: production
+          config_path: .ee.api
+          origin: github
+          gh_token: ${{ secrets.GH_PAT }}
+
+      - name: Push worker secrets to Cloudflare
+        uses: n1rna/ee-action/push@v1
+        with:
+          environment: production
+          config_path: .ee.worker
+          origin: cloudflare
+          cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+**Consuming repo** hydrates the secrets at deploy time:
+
+```yaml
+# app-repo/.github/workflows/deploy.yml
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Prepare environment
+    uses: n1rna/ee-action@v1
+    with:
+      environment: production
+      config_path: .ee
+      env_file: .env.production
+      gh_secret: ${{ secrets.ENV_PRODUCTION }}
+
+  - run: docker build --env-file .env.production -t myapp .
 ```
 
 ---
