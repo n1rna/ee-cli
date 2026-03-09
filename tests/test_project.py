@@ -130,16 +130,13 @@ class TestProjectVerify:
         # Initialize project
         ee_runner(["init", "verify-project", "--schema", "verify-schema"], cwd=temp_project_dir)
 
-        # Create .env files for environments with required variables
-        config_dev = fixtures_dir / "config-dev.yaml"
-        with open(config_dev) as f:
-            import yaml
-            dev_vars = yaml.safe_load(f)
-
+        # Create .env file for development environment with required variables
         dev_env = Path(temp_project_dir) / ".env.development"
         with open(dev_env, 'w') as f:
-            for k, v in dev_vars.items():
-                f.write(f"{k}={v}\n")
+            f.write("DATABASE_URL=postgres://localhost:5432/dev_db\n")
+            f.write("PORT=3000\n")
+            f.write("DEBUG=true\n")
+            f.write("API_KEY=dev-api-key-123\n")
 
         # Verify project
         result = ee_runner(["verify"], cwd=temp_project_dir, check=False)
