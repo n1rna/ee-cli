@@ -1,44 +1,39 @@
 """
-Integration tests for config sheet merging and stacking
+Integration tests for environment source merging and stacking
 """
 import json
+import os
 from pathlib import Path
 import pytest
 
 
-class TestConfigSheetMerging:
-    """Test merging multiple config sheets"""
+class TestEnvFileMerging:
+    """Test merging multiple .env file sources"""
 
-    def test_merge_two_sheets(self, ee_runner, temp_project_dir, fixtures_dir, generic_schema):
-        """Test merging two config sheets with precedence"""
-        # Create base config sheet
-        ee_runner([
-            "sheet", "create", "base-config",
-            "--schema", generic_schema,
-            "--value", "VAR1=base_value1",
-            "--value", "VAR2=base_value2",
-            "--value", "VAR3=base_value3"
-        ])
+    def test_merge_two_env_files(self, ee_runner, temp_project_dir):
+        """Test merging two .env files with precedence"""
+        # Create base .env file
+        base_env = Path(temp_project_dir) / ".env.base"
+        base_env.write_text(
+            "VAR1=base_value1\nVAR2=base_value2\nVAR3=base_value3\n"
+        )
 
-        # Create override config sheet
-        ee_runner([
-            "sheet", "create", "override-config",
-            "--schema", generic_schema,
-            "--value", "VAR2=override_value2",  # Override VAR2
-            "--value", "VAR4=override_value4"   # Add new VAR4
-        ])
+        # Create override .env file
+        override_env = Path(temp_project_dir) / ".env.override"
+        override_env.write_text(
+            "VAR2=override_value2\nVAR4=override_value4\n"
+        )
 
         # Initialize project
         ee_runner(["init", "merge-project"], cwd=temp_project_dir)
 
-        # Configure environment with multiple sheets
+        # Configure environment with multiple sources
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
-        # Stack sheets: base first, then override
         config["environments"]["development"] = {
-            "sheets": ["base-config", "override-config"]
+            "sources": [".env.base", ".env.override"]
         }
 
         with open(ee_file, 'w') as f:
@@ -57,49 +52,33 @@ class TestConfigSheetMerging:
         # VAR1 from base (not overridden)
         assert merged_vars["VAR1"] == "base_value1"
 
-        # VAR2 overridden by second sheet
+        # VAR2 overridden by second source
         assert merged_vars["VAR2"] == "override_value2"
 
         # VAR3 from base (not overridden)
         assert merged_vars["VAR3"] == "base_value3"
 
-        # VAR4 from override sheet
+        # VAR4 from override
         assert merged_vars["VAR4"] == "override_value4"
 
-    def test_merge_three_sheets_with_precedence(self, ee_runner, temp_project_dir, generic_schema):
-        """Test merging three sheets with correct precedence order"""
-        # Create three config sheets
-        ee_runner([
-            "sheet", "create", "sheet1",
-            "--schema", generic_schema,
-            "--value", "SHARED=from_sheet1",
-            "--value", "ONLY_IN_1=value1"
-        ])
-
-        ee_runner([
-            "sheet", "create", "sheet2",
-            "--schema", generic_schema,
-            "--value", "SHARED=from_sheet2",
-            "--value", "ONLY_IN_2=value2"
-        ])
-
-        ee_runner([
-            "sheet", "create", "sheet3",
-            "--schema", generic_schema,
-            "--value", "SHARED=from_sheet3",
-            "--value", "ONLY_IN_3=value3"
-        ])
+    def test_merge_three_sources_with_precedence(self, ee_runner, temp_project_dir):
+        """Test merging three .env files with correct precedence order"""
+        for i in range(1, 4):
+            env_file = Path(temp_project_dir) / f".env.layer{i}"
+            env_file.write_text(
+                f"SHARED=from_layer{i}\nONLY_IN_{i}=value{i}\n"
+            )
 
         # Initialize project
         ee_runner(["init", "triple-merge"], cwd=temp_project_dir)
 
-        # Configure stacked sheets
+        # Configure stacked sources
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
         config["environments"]["staging"] = {
-            "sheets": ["sheet1", "sheet2", "sheet3"]
+            "sources": [".env.layer1", ".env.layer2", ".env.layer3"]
         }
 
         with open(ee_file, 'w') as f:
@@ -113,77 +92,33 @@ class TestConfigSheetMerging:
 
         merged_vars = json.loads(result.stdout)
 
-        # Last sheet wins for shared variable
-        assert merged_vars["SHARED"] == "from_sheet3"
+        # Last source wins for shared variable
+        assert merged_vars["SHARED"] == "from_layer3"
 
         # Each unique variable is included
         assert merged_vars["ONLY_IN_1"] == "value1"
         assert merged_vars["ONLY_IN_2"] == "value2"
         assert merged_vars["ONLY_IN_3"] == "value3"
 
-    def test_merge_with_mixed_formats(self, ee_runner, temp_project_dir, fixtures_dir, generic_schema):
-        """Test merging sheets created from different file formats"""
-        # Create sheets from different formats
-        yaml_file = fixtures_dir / "config-dev.yaml"
-        json_file = fixtures_dir / "config-prod.json"
-        env_file = fixtures_dir / "config-base.env"
 
-        ee_runner(["sheet", "create", "yaml-sheet", "--import", str(yaml_file), "--schema", generic_schema])
-        ee_runner(["sheet", "create", "json-sheet", "--import", str(json_file), "--schema", generic_schema])
-        ee_runner(["sheet", "create", "env-sheet", "--import", str(env_file), "--schema", generic_schema])
+class TestEnvFileReferences:
+    """Test different ways of referencing .env files in environments"""
 
-        # Initialize project
-        ee_runner(["init", "mixed-format-project"], cwd=temp_project_dir)
-
-        # Configure environment with mixed format sheets
-        ee_file = Path(temp_project_dir) / ".ee"
-        with open(ee_file) as f:
-            config = json.load(f)
-
-        config["environments"]["mixed"] = {
-            "sheets": ["env-sheet", "yaml-sheet", "json-sheet"]
-        }
-
-        with open(ee_file, 'w') as f:
-            json.dump(config, f, indent=2)
-
-        # Apply
-        result = ee_runner(
-            ["apply", "mixed", "--dry-run", "--format", "json"],
-            cwd=temp_project_dir
-        )
-
-        assert result.returncode == 0
-
-        merged_vars = json.loads(result.stdout)
-
-        # Verify values from different sources merged correctly
-        # json-sheet (last) should override DATABASE_URL
-        assert "postgres://prod-db:5432/prod_db" in merged_vars["DATABASE_URL"]
-
-
-class TestSheetReferences:
-    """Test different ways of referencing sheets in environments"""
-
-    def test_single_sheet_reference(self, ee_runner, temp_project_dir, generic_schema):
-        """Test environment with single sheet reference"""
-        # Create sheet
-        ee_runner([
-            "sheet", "create", "single-sheet",
-            "--schema", generic_schema,
-            "--value", "VAR=single_value"
-        ])
+    def test_single_env_reference(self, ee_runner, temp_project_dir):
+        """Test environment with single env file reference"""
+        env_file = Path(temp_project_dir) / ".env.dev"
+        env_file.write_text("VAR=single_value\n")
 
         # Initialize project
         ee_runner(["init", "single-ref-project"], cwd=temp_project_dir)
 
-        # Configure with single sheet
+        # Configure with single env file
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
         config["environments"]["dev"] = {
-            "sheet": "single-sheet"  # Single sheet, not array
+            "env": ".env.dev"
         }
 
         with open(ee_file, 'w') as f:
@@ -199,24 +134,21 @@ class TestSheetReferences:
         merged_vars = json.loads(result.stdout)
         assert merged_vars["VAR"] == "single_value"
 
-    def test_sheet_array_reference(self, ee_runner, temp_project_dir, generic_schema):
-        """Test environment with array of sheet references"""
-        # Create sheets
-        ee_runner(["sheet", "create", "array-1",
-            "--schema", generic_schema, "--value", "V1=val1"])
-        ee_runner(["sheet", "create", "array-2",
-            "--schema", generic_schema, "--value", "V2=val2"])
+    def test_sources_array_reference(self, ee_runner, temp_project_dir):
+        """Test environment with array of source references"""
+        (Path(temp_project_dir) / ".env.s1").write_text("V1=val1\n")
+        (Path(temp_project_dir) / ".env.s2").write_text("V2=val2\n")
 
         # Initialize project
         ee_runner(["init", "array-ref-project"], cwd=temp_project_dir)
 
-        # Configure with sheet array
+        # Configure with sources array
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
         config["environments"]["test"] = {
-            "sheets": ["array-1", "array-2"]
+            "sources": [".env.s1", ".env.s2"]
         }
 
         with open(ee_file, 'w') as f:
@@ -234,93 +166,27 @@ class TestSheetReferences:
         assert merged_vars["V2"] == "val2"
 
 
-class TestMergeWithSchemaValidation:
-    """Test merging with schema validation"""
-
-    def test_merged_result_validates_against_schema(self, ee_runner, temp_project_dir, fixtures_dir, generic_schema):
-        """Test that merged config validates against project schema"""
-        # Create schema
-        schema_file = fixtures_dir / "schema-web-service.yaml"
-        ee_runner(["schema", "create", "merge-schema", "--import", str(schema_file)])
-
-        # Create partial config sheets
-        ee_runner([
-            "sheet", "create", "partial-1",
-            "--schema", generic_schema,
-            "--value", "DATABASE_URL=postgres://localhost/db",
-            "--value", "PORT=8080"
-        ])
-
-        ee_runner([
-            "sheet", "create", "partial-2",
-            "--schema", generic_schema,
-            "--value", "DEBUG=true",
-            "--value", "API_KEY=test-key"
-        ])
-
-        # Initialize project with schema
-        ee_runner(
-            ["init", "validated-merge", "--schema", "merge-schema"],
-            cwd=temp_project_dir
-        )
-
-        # Configure environment with both sheets to satisfy schema
-        ee_file = Path(temp_project_dir) / ".ee"
-        with open(ee_file) as f:
-            config = json.load(f)
-
-        config["environments"]["complete"] = {
-            "sheets": ["partial-1", "partial-2"]
-        }
-
-        with open(ee_file, 'w') as f:
-            json.dump(config, f, indent=2)
-
-        # Verify should pass with merged values or report missing .env file
-        result = ee_runner(["verify"], cwd=temp_project_dir, check=False)
-
-        # Should validate successfully (all required vars present after merge)
-        # May fail due to missing .env file, which is expected
-        assert result.returncode == 0 or "missing environment file" in result.stdout.lower() or "valid" in result.stdout.lower()
-
-
 class TestMergePriority:
     """Test merge priority and override behavior"""
 
-    def test_later_sheets_override_earlier(self, ee_runner, temp_project_dir, generic_schema):
-        """Test that later sheets in the array override earlier ones"""
-        # Create sheets with same variable
-        ee_runner([
-            "sheet", "create", "priority-1",
-            "--schema", generic_schema,
-            "--value", "PRIORITY_VAR=first",
-            "--value", "UNIQUE_1=value1"
-        ])
-
-        ee_runner([
-            "sheet", "create", "priority-2",
-            "--schema", generic_schema,
-            "--value", "PRIORITY_VAR=second",
-            "--value", "UNIQUE_2=value2"
-        ])
-
-        ee_runner([
-            "sheet", "create", "priority-3",
-            "--schema", generic_schema,
-            "--value", "PRIORITY_VAR=third",
-            "--value", "UNIQUE_3=value3"
-        ])
+    def test_later_sources_override_earlier(self, ee_runner, temp_project_dir):
+        """Test that later sources in the array override earlier ones"""
+        for i in range(1, 4):
+            env_file = Path(temp_project_dir) / f".env.priority{i}"
+            content = f"PRIORITY_VAR={'first' if i == 1 else 'second' if i == 2 else 'third'}\n"
+            content += f"UNIQUE_{i}=value{i}\n"
+            env_file.write_text(content)
 
         # Initialize project
         ee_runner(["init", "priority-test"], cwd=temp_project_dir)
 
-        # Configure sheets in specific order
+        # Configure sources in specific order
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
         config["environments"]["ordered"] = {
-            "sheets": ["priority-1", "priority-2", "priority-3"]
+            "sources": [".env.priority1", ".env.priority2", ".env.priority3"]
         }
 
         with open(ee_file, 'w') as f:
@@ -334,7 +200,7 @@ class TestMergePriority:
 
         merged_vars = json.loads(result.stdout)
 
-        # Last sheet (priority-3) should win
+        # Last source should win
         assert merged_vars["PRIORITY_VAR"] == "third"
 
         # All unique values should be present
@@ -342,70 +208,25 @@ class TestMergePriority:
         assert merged_vars["UNIQUE_2"] == "value2"
         assert merged_vars["UNIQUE_3"] == "value3"
 
-    def test_empty_value_overrides(self, ee_runner, temp_project_dir, generic_schema):
-        """Test that empty values in later sheets override earlier values"""
-        # Create sheets
-        ee_runner([
-            "sheet", "create", "with-value",
-            "--schema", generic_schema,
-            "--value", "OPTIONAL_VAR=has_value"
-        ])
-
-        ee_runner([
-            "sheet", "create", "with-empty",
-            "--schema", generic_schema,
-            "--value", "OPTIONAL_VAR="  # Empty value
-        ])
-
-        # Initialize project
-        ee_runner(["init", "empty-override"], cwd=temp_project_dir)
-
-        # Configure
-        ee_file = Path(temp_project_dir) / ".ee"
-        with open(ee_file) as f:
-            config = json.load(f)
-
-        config["environments"]["test"] = {
-            "sheets": ["with-value", "with-empty"]
-        }
-
-        with open(ee_file, 'w') as f:
-            json.dump(config, f, indent=2)
-
-        # Apply
-        result = ee_runner(
-            ["apply", "test", "--dry-run", "--format", "json"],
-            cwd=temp_project_dir
-        )
-
-        merged_vars = json.loads(result.stdout)
-
-        # Empty value should override
-        assert merged_vars.get("OPTIONAL_VAR") == ""
-
 
 class TestMergeErrorHandling:
-    """Test error handling in sheet merging"""
+    """Test error handling in source merging"""
 
-    def test_missing_sheet_in_merge_fails(self, ee_runner, temp_project_dir, generic_schema):
-        """Test that referencing non-existent sheet in merge fails"""
-        # Create one valid sheet
-        ee_runner([
-            "sheet", "create", "exists",
-            "--schema", generic_schema,
-            "--value", "VAR=value"
-        ])
+    def test_missing_env_file_in_merge_fails(self, ee_runner, temp_project_dir):
+        """Test that referencing non-existent .env file in merge fails"""
+        # Create one valid .env file
+        (Path(temp_project_dir) / ".env.exists").write_text("VAR=value\n")
 
         # Initialize project
         ee_runner(["init", "missing-in-merge"], cwd=temp_project_dir)
 
-        # Configure with missing sheet
+        # Configure with missing source
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
         config["environments"]["broken"] = {
-            "sheets": ["exists", "does-not-exist"]
+            "sources": [".env.exists", ".env.does-not-exist"]
         }
 
         with open(ee_file, 'w') as f:
@@ -419,4 +240,5 @@ class TestMergeErrorHandling:
         )
 
         assert result.returncode != 0
-        assert "not found" in result.stderr.lower() or "does-not-exist" in result.stderr
+        assert "not found" in result.stderr.lower() or \
+               "does-not-exist" in result.stderr

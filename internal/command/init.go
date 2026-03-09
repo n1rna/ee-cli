@@ -104,10 +104,10 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 		Schema:  schema,
 		Environments: map[string]parser.EnvironmentDefinition{
 			"development": {
-				Sheets: []any{".env.development"},
+				Env: ".env.development",
 			},
 			"production": {
-				Sheets: []any{".env.production"},
+				Env: ".env.production",
 			},
 		},
 	}
@@ -230,22 +230,21 @@ func (c *InitCommand) createSampleEnvFiles(
 	manager *entities.Manager,
 ) error {
 	for envName, envDef := range projectConfig.Environments {
-		// Find .env file references in the environment sheets
-		for _, sheet := range envDef.Sheets {
-			if sheetStr, ok := sheet.(string); ok &&
-				(sheetStr == ".env" || sheetStr == ".env."+envName) {
-				envFile := sheetStr
-				if envFile == ".env" {
-					envFile = ".env." + envName
-				}
+		// Determine .env file from environment definition
+		envFile := envDef.Env
+		if envFile == "" {
+			envFile = ".env." + envName
+		}
 
-				// Create the .env file if it doesn't exist
-				if _, err := os.Stat(envFile); os.IsNotExist(err) {
-					err := c.createSampleEnvFile(envFile, projectConfig.Schema, manager)
-					if err != nil {
-						return fmt.Errorf("failed to create %s: %w", envFile, err)
-					}
-				}
+		// Create the .env file if it doesn't exist
+		if _, err := os.Stat(envFile); os.IsNotExist(err) {
+			err := c.createSampleEnvFile(
+				envFile, projectConfig.Schema, manager,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to create %s: %w", envFile, err,
+				)
 			}
 		}
 	}

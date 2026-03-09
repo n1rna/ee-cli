@@ -3,8 +3,13 @@
 package entities
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/storage"
@@ -139,25 +144,93 @@ func (sm *SchemaManager) Update(nameOrUUID string, updater func(*Schema) error) 
 	return s, nil
 }
 
-// GetByReference loads a schema by reference, handling local:// and remote:// prefixes
-func (sm *SchemaManager) GetByReference(schemaRef string) (*Schema, error) {
+// GetByReference loads a schema by reference string.
+// Supported formats:
+//   - "#/schemas/{uuid}" - JSON Pointer style reference
+//   - "local://schema-name" - Local schema by name
+//   - "file://path/to/schema.yaml" - Schema file relative to working directory
+//   - "./schema.yaml" or "../schema.yaml" - Relative file path
+//   - Plain name - Local schema by name
+func (sm *SchemaManager) GetByReference(
+	schemaRef string,
+) (*Schema, error) {
 	switch {
 	case strings.HasPrefix(schemaRef, "#/schemas/"):
-		// JSON Pointer style reference: #/schemas/{uuid}
 		uuid := strings.TrimPrefix(schemaRef, "#/schemas/")
 		return sm.GetByID(uuid)
 
 	case strings.HasPrefix(schemaRef, "local://"):
-		// Local schema reference: local://schema-name
 		schemaName := strings.TrimPrefix(schemaRef, "local://")
 		return sm.Get(schemaName)
 
-	case strings.HasPrefix(schemaRef, "remote://"):
-		// Remote schema reference: not yet implemented
-		return nil, fmt.Errorf("remote schema references not yet implemented: %s", schemaRef)
+	case strings.HasPrefix(schemaRef, "file://"):
+		path := strings.TrimPrefix(schemaRef, "file://")
+		return sm.LoadFromFile(path)
+
+	case strings.HasPrefix(schemaRef, "./"),
+		strings.HasPrefix(schemaRef, "../"):
+		return sm.LoadFromFile(schemaRef)
 
 	default:
-		// Assume it's a local schema name without prefix
+		// Try as local schema name first
+		if s, err := sm.Get(schemaRef); err == nil {
+			return s, nil
+		}
+		// Try as file path if it has a known extension
+		ext := strings.ToLower(filepath.Ext(schemaRef))
+		if ext == ".yaml" || ext == ".yml" || ext == ".json" {
+			return sm.LoadFromFile(schemaRef)
+		}
 		return sm.Get(schemaRef)
 	}
+}
+
+// LoadFromFile loads a schema from a YAML or JSON file
+func (sm *SchemaManager) LoadFromFile(path string) (*Schema, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to read schema file %s: %w", path, err,
+		)
+	}
+
+	// Try to parse as a schema with variables
+	var rawSchema struct {
+		Name        string     `json:"name" yaml:"name"`
+		Description string     `json:"description" yaml:"description"`
+		Variables   []Variable `json:"variables" yaml:"variables"`
+		Extends     []string   `json:"extends" yaml:"extends"`
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".yaml", ".yml":
+		err = yaml.Unmarshal(data, &rawSchema)
+	case ".json":
+		err = json.Unmarshal(data, &rawSchema)
+	default:
+		// Try YAML first, then JSON
+		if err = yaml.Unmarshal(data, &rawSchema); err != nil {
+			err = json.Unmarshal(data, &rawSchema)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to parse schema file %s: %w", path, err,
+		)
+	}
+
+	name := rawSchema.Name
+	if name == "" {
+		// Use filename without extension as name
+		name = strings.TrimSuffix(
+			filepath.Base(path), filepath.Ext(path),
+		)
+	}
+
+	return &Schema{
+		Entity:    storage.NewEntity(name, rawSchema.Description),
+		Variables: rawSchema.Variables,
+		Extends:   rawSchema.Extends,
+	}, nil
 }

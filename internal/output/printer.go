@@ -155,30 +155,6 @@ func (p *Printer) PrintSchemaList(summaries []storage.EntitySummary) error {
 	}
 }
 
-// PrintConfigSheet prints a config sheet in the specified format
-func (p *Printer) PrintConfigSheet(cs *entities.ConfigSheet) error {
-	switch p.format {
-	case FormatTable:
-		return p.printConfigSheetTable(cs)
-	case FormatJSON:
-		return p.printJSON(cs)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
-// PrintConfigSheetList prints a list of config sheet summaries
-func (p *Printer) PrintConfigSheetList(summaries []storage.EntitySummary) error {
-	switch p.format {
-	case FormatTable:
-		return p.printConfigSheetListTable(summaries)
-	case FormatJSON:
-		return p.printJSON(summaries)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
 // PrintValues prints environment variable values
 func (p *Printer) PrintValues(values map[string]string) error {
 	switch p.format {
@@ -241,66 +217,6 @@ func (p *Printer) printSchemaTable(s *entities.Schema) error {
 func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error {
 	if len(summaries) == 0 {
 		pterm.Info.Println("No schemas found")
-		return nil
-	}
-
-	// Sort by name
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].Name < summaries[j].Name
-	})
-
-	// Build table data
-	tableData := pterm.TableData{
-		{"NAME", "DESCRIPTION", "CREATED"},
-	}
-
-	for _, summary := range summaries {
-		desc := summary.Description
-		if len(desc) > 50 {
-			desc = desc[:47] + "..."
-		}
-
-		tableData = append(tableData, []string{
-			summary.Name,
-			desc,
-			summary.CreatedAt.Format("2006-01-02"),
-		})
-	}
-
-	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-}
-
-// printConfigSheetTable prints a config sheet in table format
-func (p *Printer) printConfigSheetTable(cs *entities.ConfigSheet) error {
-	// Print header info
-	pterm.DefaultSection.Println("Config Sheet: " + cs.Name)
-	pterm.Println(pterm.Gray("ID: " + cs.ID))
-	if cs.Description != "" {
-		pterm.Println(pterm.LightCyan(cs.Description))
-	}
-
-	if cs.Schema.IsReference() {
-		pterm.Println(pterm.Gray("Schema Reference: " + cs.Schema.Ref))
-	} else if cs.Schema.IsInline() {
-		pterm.Println(pterm.Gray(pterm.Sprintf("Schema: Inline (%d variables)", len(cs.Schema.Variables))))
-	}
-
-	pterm.Println(pterm.Gray("Created: " + cs.CreatedAt.Format(time.RFC3339)))
-	pterm.Println(pterm.Gray("Updated: " + cs.UpdatedAt.Format(time.RFC3339)))
-
-	if len(cs.Extends) > 0 {
-		pterm.Println(pterm.Gray("Extends: " + strings.Join(cs.Extends, ", ")))
-	}
-
-	pterm.Println()
-	pterm.DefaultHeader.Println("Values")
-	return p.printValuesTable(cs.Values)
-}
-
-// printConfigSheetListTable prints a list of config sheets in table format
-func (p *Printer) printConfigSheetListTable(summaries []storage.EntitySummary) error {
-	if len(summaries) == 0 {
-		pterm.Info.Println("No config sheets found")
 		return nil
 	}
 

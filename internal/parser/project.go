@@ -28,8 +28,8 @@ type ProjectConfigSchema struct {
 
 // EnvironmentDefinition defines how an environment is configured
 type EnvironmentDefinition struct {
-	Sheet  string        `json:"sheet,omitempty"`  // Single config sheet reference
-	Sheets []interface{} `json:"sheets,omitempty"` // Multiple config sheets (mixed types)
+	Env     string        `json:"env,omitempty"`     // Single .env file reference
+	Sources []interface{} `json:"sources,omitempty"` // Multiple sources (.env files, inline objects)
 }
 
 // LoadProjectConfig loads and parses a .ee file from the current directory

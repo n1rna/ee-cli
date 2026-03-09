@@ -2,9 +2,7 @@
 // This is a complete rewrite for UUID-based entity architecture as specified in docs/entities.md
 package entities
 
-import (
-	"github.com/n1rna/ee-cli/internal/storage"
-)
+import "github.com/n1rna/ee-cli/internal/storage"
 
 // Variable represents a single environment variable definition in the schema
 // Enhanced with title field for better UX
@@ -52,30 +50,4 @@ func (sr *SchemaReference) IsInline() bool {
 // IsReference returns true if this references an existing schema
 func (sr *SchemaReference) IsReference() bool {
 	return sr.Ref != ""
-}
-
-// ConfigSheet represents a standalone configuration sheet
-// Can exist independently or be associated with a project environment
-type ConfigSheet struct {
-	storage.Entity                   // Embedded Entity base
-	Schema         SchemaReference   `json:"schema"`            // Schema definition or reference
-	Values         map[string]string `json:"values"`            // Variable values
-	Extends        []string          `json:"extends,omitempty"` // UUIDs or names of config sheets to inherit from
-}
-
-// NewConfigSheet creates a new config sheet with generated UUID
-func NewConfigSheet(
-	name, description string,
-	schema SchemaReference,
-	values map[string]string,
-) *ConfigSheet {
-	if values == nil {
-		values = make(map[string]string)
-	}
-	return &ConfigSheet{
-		Entity:  storage.NewEntity(name, description),
-		Schema:  schema,
-		Values:  values,
-		Extends: []string{},
-	}
 }

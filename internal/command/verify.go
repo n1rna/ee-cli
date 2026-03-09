@@ -250,18 +250,21 @@ func (c *VerifyCommand) verifyEnvironment(
 }
 
 // findEnvFiles finds .env files referenced by an environment definition
-func (c *VerifyCommand) findEnvFiles(envName string, envDef parser.EnvironmentDefinition) []string {
+func (c *VerifyCommand) findEnvFiles(
+	envName string, envDef parser.EnvironmentDefinition,
+) []string {
 	var envFiles []string
 
-	// Check single sheet reference
-	if envDef.Sheet != "" && strings.HasPrefix(envDef.Sheet, ".env") {
-		envFiles = append(envFiles, envDef.Sheet)
+	// Check single env file reference
+	if envDef.Env != "" && strings.HasPrefix(envDef.Env, ".env") {
+		envFiles = append(envFiles, envDef.Env)
 	}
 
-	// Check multiple sheets
-	for _, sheet := range envDef.Sheets {
-		if sheetStr, ok := sheet.(string); ok && strings.HasPrefix(sheetStr, ".env") {
-			envFiles = append(envFiles, sheetStr)
+	// Check multiple sources for .env file references
+	for _, source := range envDef.Sources {
+		if srcStr, ok := source.(string); ok &&
+			strings.HasPrefix(srcStr, ".env") {
+			envFiles = append(envFiles, srcStr)
 		}
 	}
 

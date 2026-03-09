@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Entity represents the base structure for all ee entities (Schema, Project, ConfigSheet)
+// Entity represents the base structure for all ee entities (Schema, Project)
 // with UUID-based identification and remote/local tracking capabilities
 type Entity struct {
 	ID          string    `json:"id"`                    // UUID for distributed identification

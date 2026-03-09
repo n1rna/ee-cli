@@ -9,9 +9,8 @@ import (
 
 // Manager provides a unified interface to all entity managers
 type Manager struct {
-	Schemas      *SchemaManager
-	ConfigSheets *ConfigSheetManager
-	config       *config.Config
+	Schemas *SchemaManager
+	config  *config.Config
 }
 
 // NewManager creates a new unified entity manager
@@ -21,15 +20,9 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		return nil, fmt.Errorf("failed to create schema manager: %w", err)
 	}
 
-	configSheets, err := NewConfigSheetManager(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create config sheet manager: %w", err)
-	}
-
 	return &Manager{
-		Schemas:      schemas,
-		ConfigSheets: configSheets,
-		config:       cfg,
+		Schemas: schemas,
+		config:  cfg,
 	}, nil
 }
 

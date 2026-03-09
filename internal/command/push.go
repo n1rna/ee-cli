@@ -20,7 +20,7 @@ func NewPushCommand(groupId string) *cobra.Command {
 		Short: "Push environment secrets to a remote origin",
 		Long: `Push secrets from a local environment to a remote origin (GitHub, Cloudflare).
 
-The environment is resolved from the .ee project file and its config sheets / .env files.
+The environment is resolved from the .ee project file and its .env files.
 The origin specifies where to push (configured in the .ee file under "origins").
 
 Push modes:
@@ -108,8 +108,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	merger := util.NewConfigSheetMerger(ctx.Manager)
-	values, err := merger.MergeEnvironment(envDef)
+	resolver := util.NewEnvResolver()
+	values, err := resolver.MergeEnvironment(util.EnvironmentSources{
+		Env:     envDef.Env,
+		Sources: envDef.Sources,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to resolve environment %q: %w", envName, err)
 	}

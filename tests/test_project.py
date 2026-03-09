@@ -105,16 +105,15 @@ class TestProjectEnvironments:
         with open(ee_file) as f:
             config = json.load(f)
 
-        config["environments"]["staging"] = {"sheet": "staging-sheet"}
-        config["environments"]["production"] = {"sheet": "prod-sheet"}
+        config["environments"]["staging"] = {"env": ".env.staging"}
+        config["environments"]["production"] = {"env": ".env.production"}
 
         with open(ee_file, 'w') as f:
             json.dump(config, f, indent=2)
 
         # Verify command recognizes project context
         result = ee_runner(["verify"], cwd=temp_project_dir, check=False)
-        # Command should recognize we're in a project (even if verification fails due to missing sheets)
-        # Verify reports issues to stdout when running within a project context
+        # Command should recognize we're in a project (even if verification fails)
         assert result.returncode != 0
         assert "issue" in result.stdout.lower() or "staging" in result.stdout
 
@@ -128,46 +127,37 @@ class TestProjectVerify:
         schema_file = fixtures_dir / "schema-web-service.yaml"
         ee_runner(["schema", "create", "verify-schema", "--import", str(schema_file)])
 
-        # Create config sheets for environments
-        config_dev = fixtures_dir / "config-dev.yaml"
-        config_prod = fixtures_dir / "config-prod.json"
-
-        ee_runner(["sheet", "create", "dev-sheet", "--import", str(config_dev), "--schema", generic_schema])
-        ee_runner(["sheet", "create", "prod-sheet", "--import", str(config_prod), "--schema", generic_schema])
-
         # Initialize project
         ee_runner(["init", "verify-project", "--schema", "verify-schema"], cwd=temp_project_dir)
 
-        # Update .ee to reference our sheets
-        ee_file = Path(temp_project_dir) / ".ee"
-        with open(ee_file) as f:
-            config = json.load(f)
+        # Create .env files for environments with required variables
+        config_dev = fixtures_dir / "config-dev.yaml"
+        with open(config_dev) as f:
+            import yaml
+            dev_vars = yaml.safe_load(f)
 
-        config["environments"] = {
-            "development": {"sheet": "dev-sheet"},
-            "production": {"sheet": "prod-sheet"}
-        }
-
-        with open(ee_file, 'w') as f:
-            json.dump(config, f, indent=2)
+        dev_env = Path(temp_project_dir) / ".env.development"
+        with open(dev_env, 'w') as f:
+            for k, v in dev_vars.items():
+                f.write(f"{k}={v}\n")
 
         # Verify project
         result = ee_runner(["verify"], cwd=temp_project_dir, check=False)
 
-        # Project should be verifiable (though it may report validation issues)
+        # Project should be verifiable
         assert result.returncode == 0 or "project" in result.stdout.lower()
 
-    def test_verify_project_with_missing_sheets(self, ee_runner, temp_project_dir):
-        """Test verifying a project with missing config sheets"""
+    def test_verify_project_with_missing_env_files(self, ee_runner, temp_project_dir):
+        """Test verifying a project with missing .env files"""
         # Initialize project
-        ee_runner(["init", "missing-sheets-project"], cwd=temp_project_dir)
+        ee_runner(["init", "missing-env-project"], cwd=temp_project_dir)
 
-        # Update .ee to reference non-existent sheets
+        # Update .ee to reference non-existent .env file
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
-        config["environments"]["test"] = {"sheet": "nonexistent-sheet"}
+        config["environments"]["test"] = {"env": ".env.nonexistent"}
 
         with open(ee_file, 'w') as f:
             json.dump(config, f, indent=2)
@@ -183,21 +173,21 @@ class TestProjectVerify:
 class TestProjectApply:
     """Test applying project environments"""
 
-    def test_apply_project_environment(self, ee_runner, temp_project_dir, fixtures_dir, generic_schema):
+    def test_apply_project_environment(self, ee_runner, temp_project_dir, fixtures_dir):
         """Test applying a project environment"""
-        # Create config sheet
-        config_file = fixtures_dir / "config-dev.yaml"
-        ee_runner(["sheet", "create", "apply-dev-sheet", "--import", str(config_file), "--schema", generic_schema])
-
         # Initialize project
         ee_runner(["init", "apply-project"], cwd=temp_project_dir)
 
-        # Update .ee to use our sheet
+        # Create .env file for development
+        dev_env = Path(temp_project_dir) / ".env.development"
+        dev_env.write_text("DATABASE_URL=postgres://localhost/dev\nPORT=3000\n")
+
+        # Update .ee to use our .env file
         ee_file = Path(temp_project_dir) / ".ee"
         with open(ee_file) as f:
             config = json.load(f)
 
-        config["environments"]["development"]["sheet"] = "apply-dev-sheet"
+        config["environments"]["development"]["env"] = ".env.development"
 
         with open(ee_file, 'w') as f:
             json.dump(config, f, indent=2)
@@ -214,26 +204,6 @@ class TestProjectApply:
         env_vars = json.loads(result.stdout)
         assert "DATABASE_URL" in env_vars
         assert env_vars["PORT"] == "3000"
-
-    def test_apply_standalone_sheet(self, ee_runner, temp_project_dir, generic_schema):
-        """Test applying a standalone config sheet"""
-        # Create standalone sheet
-        ee_runner([
-            "sheet", "create", "standalone-test",
-            "--schema", generic_schema,
-            "--value", "STANDALONE_VAR=test_value"
-        ])
-
-        # Apply with standalone flag
-        result = ee_runner(
-            ["apply", "standalone-test", "--standalone", "--dry-run", "--format", "json"],
-            cwd=temp_project_dir
-        )
-
-        assert result.returncode == 0
-
-        env_vars = json.loads(result.stdout)
-        assert env_vars["STANDALONE_VAR"] == "test_value"
 
     def test_apply_env_file_directly(self, ee_runner, temp_project_dir, fixtures_dir):
         """Test applying a .env file directly"""

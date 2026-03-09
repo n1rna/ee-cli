@@ -84,10 +84,6 @@ func main() {
 		Title: "Global Commands:",
 	})
 	rootCmd.AddGroup(&cobra.Group{
-		ID:    "entities",
-		Title: "Entity Management:",
-	})
-	rootCmd.AddGroup(&cobra.Group{
 		ID:    "authenticated",
 		Title: "Remote Operations:",
 	})
@@ -100,10 +96,7 @@ func main() {
 		command.NewHydrateCommand("global"), // Generate env file from schema + shell env
 		command.NewVerifyCommand("global"),  // Verify project configuration
 		command.NewAuthCommand("global"),    // Authentication
-
-		// Entity Management - local entity operations
-		command.NewSchemaCommand("entities"), // Schema management
-		command.NewSheetCommand("entities"),  // Config sheet management
+		command.NewSchemaCommand("global"),  // Schema management
 
 		// Remote Operations - push secrets to origins
 		command.NewPushCommand("authenticated"),

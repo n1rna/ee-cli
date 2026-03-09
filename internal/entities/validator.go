@@ -137,53 +137,6 @@ func (v *Validator) resolveSchema(
 	return resolved, nil
 }
 
-// resolveConfigSheet resolves a config sheet with all inherited values
-func (v *Validator) resolveConfigSheet(
-	sheet *ConfigSheet, visited map[string]bool,
-) (*ConfigSheet, error) {
-	if visited[sheet.ID] {
-		return nil, fmt.Errorf("circular dependency detected in config sheet %s", sheet.Name)
-	}
-	visited[sheet.ID] = true
-
-	resolved := &ConfigSheet{
-		Entity:  sheet.Entity,
-		Schema:  sheet.Schema,
-		Extends: sheet.Extends,
-		Values:  make(map[string]string),
-	}
-
-	// Resolve extended config sheets first
-	for _, extendNameOrUUID := range sheet.Extends {
-		extendSheet, err := v.manager.ConfigSheets.Get(extendNameOrUUID)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to load extended config sheet %s: %w",
-				extendNameOrUUID,
-				err,
-			)
-		}
-
-		// Recursively resolve the extended config sheet
-		resolvedExtend, err := v.resolveConfigSheet(extendSheet, visited)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add values from extended config sheet
-		for k, v := range resolvedExtend.Values {
-			resolved.Values[k] = v
-		}
-	}
-
-	// Add/override with current sheet's values
-	for k, v := range sheet.Values {
-		resolved.Values[k] = v
-	}
-
-	return resolved, nil
-}
-
 // ValidateSchema checks if a schema definition is valid
 func (v *Validator) ValidateSchema(schema *Schema) error {
 	if schema.Name == "" {
@@ -202,70 +155,6 @@ func (v *Validator) ValidateSchema(schema *Schema) error {
 			return fmt.Errorf("invalid variable %s: %w", variable.Name, err)
 		}
 	}
-
-	return nil
-}
-
-// ValidateConfigSheet validates a config sheet against its schema
-func (v *Validator) ValidateConfigSheet(sheet *ConfigSheet) error {
-	if sheet.Name == "" {
-		return fmt.Errorf("config sheet name cannot be empty")
-	}
-
-	// Load schema based on reference type
-	var schema *Schema
-	var err error
-
-	if sheet.Schema.IsReference() {
-		// Load referenced schema
-		schema, err = v.manager.Schemas.GetByReference(sheet.Schema.Ref)
-		if err != nil {
-			return fmt.Errorf("failed to load referenced schema: %w", err)
-		}
-	} else if sheet.Schema.IsInline() {
-		// Create temporary schema from inline definition
-		variables := make([]Variable, 0, len(sheet.Schema.Variables))
-		for _, variable := range sheet.Schema.Variables {
-			variables = append(variables, variable)
-		}
-		schema = NewSchema("inline", "inline schema", variables, nil)
-	} else {
-		return fmt.Errorf("config sheet must have either schema reference or inline schema")
-	}
-
-	// Resolve schema inheritance
-	resolvedSchema, err := v.resolveSchema(schema, make(map[string]bool))
-	if err != nil {
-		return fmt.Errorf("failed to resolve schema inheritance: %w", err)
-	}
-
-	// Resolve config sheet inheritance
-	resolvedSheet, err := v.resolveConfigSheet(sheet, make(map[string]bool))
-	if err != nil {
-		return fmt.Errorf("failed to resolve config inheritance: %w", err)
-	}
-
-	// Validate all variables against the resolved schema
-	for _, variable := range resolvedSchema.Variables {
-		value, exists := resolvedSheet.Values[variable.Name]
-
-		if !exists {
-			if variable.Required {
-				return fmt.Errorf("required variable %s is missing", variable.Name)
-			}
-			if variable.Default != "" {
-				resolvedSheet.Values[variable.Name] = variable.Default
-			}
-			continue
-		}
-
-		if err := v.ValidateValue(&variable, value); err != nil {
-			return fmt.Errorf("invalid value for %s: %w", variable.Name, err)
-		}
-	}
-
-	// Update the original sheet with resolved values
-	sheet.Values = resolvedSheet.Values
 
 	return nil
 }
