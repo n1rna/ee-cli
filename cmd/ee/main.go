@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	version     = "0.8.2"
+	version     = "0.8.3"
 	cfgFile     string
 	globalFlags = struct {
 		debug bool

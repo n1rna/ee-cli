@@ -112,6 +112,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	values, err := resolver.MergeEnvironment(util.EnvironmentSources{
 		Env:     envDef.Env,
 		Sources: envDef.Sources,
+		Sheets:  envDef.Sheets,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to resolve environment %q: %w", envName, err)

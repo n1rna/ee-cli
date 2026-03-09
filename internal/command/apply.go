@@ -165,6 +165,7 @@ func (c *ApplyCommand) applyProjectEnvironment(
 		util.EnvironmentSources{
 			Env:     envDef.Env,
 			Sources: envDef.Sources,
+			Sheets:  envDef.Sheets,
 		},
 	)
 	if err != nil {

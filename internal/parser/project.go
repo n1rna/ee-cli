@@ -30,6 +30,7 @@ type ProjectConfigSchema struct {
 type EnvironmentDefinition struct {
 	Env     string        `json:"env,omitempty"`     // Single .env file reference
 	Sources []interface{} `json:"sources,omitempty"` // Multiple sources (.env files, inline objects)
+	Sheets  []string      `json:"sheets,omitempty"`  // List of .env file paths
 }
 
 // LoadProjectConfig loads and parses a .ee file from the current directory

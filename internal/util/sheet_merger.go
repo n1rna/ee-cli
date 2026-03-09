@@ -27,6 +27,11 @@ func (r *EnvResolver) MergeEnvironment(
 		refs = append(refs, env.Env)
 	}
 
+	// Handle sheets (list of .env file paths)
+	for _, sheet := range env.Sheets {
+		refs = append(refs, sheet)
+	}
+
 	// Handle multiple sources
 	if len(env.Sources) > 0 {
 		refs = append(refs, env.Sources...)
@@ -165,4 +170,5 @@ func (r *EnvResolver) parseDotEnvFile(
 type EnvironmentSources struct {
 	Env     string        // Single .env file reference
 	Sources []interface{} // Multiple sources (.env files, inline objects)
+	Sheets  []string      // List of .env file paths
 }
