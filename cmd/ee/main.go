@@ -9,13 +9,11 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/command"
 	"github.com/n1rna/ee-cli/internal/config"
-	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/util"
 )
 
 var (
 	version     = "0.7.0"
-	cfgBaseDir  string
 	cfgFile     string
 	globalFlags = struct {
 		debug bool
@@ -30,7 +28,7 @@ func main() {
 	// Only show usage for invalid commands/arguments, not for runtime errors
 	rootCmd.SilenceUsage = true
 
-	// Set up persistent pre-run for entity manager and command context initialization
+	// Set up persistent pre-run for command context initialization
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Load configuration from environment
 		cfg, err := config.LoadConfig()
@@ -38,42 +36,23 @@ func main() {
 			return fmt.Errorf("failed to load configuration: %w", err)
 		}
 
-		// Override base directory if specified via flag
-		if cfgBaseDir != "" {
-			cfg.BaseDir = cfgBaseDir
-			// Re-validate after override
-			if err := cfg.Validate(); err != nil {
-				return fmt.Errorf("invalid configuration: %w", err)
-			}
-		}
-
 		// Override config file if specified via flag
 		if cfgFile != "" {
 			cfg.ConfigFile = cfgFile
 		}
 
-		// Initialize entity manager
-		entityManager, err := entities.NewManager(cfg)
-		if err != nil {
-			return fmt.Errorf("failed to initialize entity manager: %w", err)
-		}
-
-		// Initialize command context (includes project detection and entity manager)
+		// Initialize command context (includes project detection)
 		commandContext, err := util.NewCommandContext(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize command context: %w", err)
 		}
 
-		// Store both entity manager and command context in command context
-		ctx := command.WithEntityManager(cmd.Context(), entityManager)
-		ctx = command.WithCommandContext(ctx, commandContext)
+		ctx := command.WithCommandContext(cmd.Context(), commandContext)
 		cmd.SetContext(ctx)
 		return nil
 	}
 
 	// Add global flags
-	rootCmd.PersistentFlags().StringVar(&cfgBaseDir, "dir", "",
-		"Base directory for ee storage (default: $EE_HOME or ~/.ee)")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "",
 		"Path to project config file (default: .ee in current directory)")
 	rootCmd.PersistentFlags().BoolVar(&globalFlags.debug, "debug", false, "Enable debug output")
@@ -96,7 +75,6 @@ func main() {
 		command.NewHydrateCommand("global"), // Generate env file from schema + shell env
 		command.NewVerifyCommand("global"),  // Verify project configuration
 		command.NewAuthCommand("global"),    // Authentication
-		command.NewSchemaCommand("global"),  // Schema management
 
 		// Remote Operations - push secrets to origins
 		command.NewPushCommand("authenticated"),

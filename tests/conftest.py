@@ -58,7 +58,7 @@ def ee_runner(ee_binary, temp_home):
         Run ee command with given arguments
 
         Args:
-            args: List of command arguments (e.g., ['schema', 'create', 'test'])
+            args: List of command arguments (e.g., ['init', 'my-project'])
             input_text: Optional stdin input for interactive commands
             cwd: Working directory (default: temp directory)
             check: Whether to raise exception on non-zero exit code
@@ -109,28 +109,3 @@ def create_fixture_file(tmp_path):
         return str(file_path)
 
     return _create
-
-
-@pytest.fixture
-def generic_schema(ee_runner):
-    """Create a generic schema that accepts any string variables"""
-    # Create a simple generic schema for this test's isolated environment
-    schema_name = "generic-test-schema"
-
-    # Try to create the schema (might fail if already exists in this temp_home)
-    result = ee_runner(
-        [
-            "schema", "create", schema_name,
-            "--description", "Generic schema for testing",
-            "--variable", "VAR1:string:Variable 1:false",
-            "--variable", "VAR2:string:Variable 2:false",
-            "--variable", "VAR3:string:Variable 3:false",
-            "--variable", "VAR4:string:Variable 4:false",
-            "--variable", "STANDALONE_VAR:string:Standalone variable:false",
-        ],
-        check=False
-    )
-
-    # Return schema name regardless of whether creation succeeded or failed
-    # (it's ok if it already exists)
-    return schema_name

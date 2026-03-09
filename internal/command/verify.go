@@ -189,18 +189,9 @@ func (c *VerifyCommand) loadProjectSchema(
 		return schema.Variables, nil
 	}
 
-	// Handle schema reference
+	// Handle schema file reference
 	if schema.Ref != "" {
-		if context.Manager == nil {
-			result.SchemaValid = false
-			result.Issues = append(result.Issues, VerificationIssue{
-				Type:        "schema_error",
-				Description: "Schema manager not available to load referenced schema",
-			})
-			return nil, fmt.Errorf("schema manager not available")
-		}
-
-		loadedSchema, err := context.Manager.Schemas.GetByReference(schema.Ref)
+		loadedSchema, err := entities.ResolveSchemaRef(schema.Ref)
 		if err != nil {
 			result.SchemaValid = false
 			result.Issues = append(result.Issues, VerificationIssue{

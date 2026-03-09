@@ -79,16 +79,8 @@ func (c *Config) Validate() error {
 
 // EnsureDirectories creates necessary directories if they don't exist
 func (c *Config) EnsureDirectories() error {
-	dirs := []string{
-		c.BaseDir,
-		filepath.Join(c.BaseDir, "schemas"),
+	if err := os.MkdirAll(c.BaseDir, 0o750); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", c.BaseDir, err)
 	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-
 	return nil
 }

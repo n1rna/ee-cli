@@ -126,13 +126,9 @@ func (c *HydrateCommand) loadSchema(
 		return schema.Variables, nil
 	}
 
-	// Referenced schema
+	// Schema file reference
 	if schema.Ref != "" {
-		if context.Manager == nil {
-			return nil, fmt.Errorf("entity manager not available to load referenced schema")
-		}
-
-		loaded, err := context.Manager.Schemas.GetByReference(schema.Ref)
+		loaded, err := entities.ResolveSchemaRef(schema.Ref)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load schema '%s': %w", schema.Ref, err)
 		}

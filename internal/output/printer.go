@@ -1,4 +1,4 @@
-// Package output provides formatted terminal output for ee entities.
+// Package output provides formatted terminal output for ee.
 // This centralizes all printing and formatting logic away from command modules.
 package output
 
@@ -9,12 +9,8 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/pterm/pterm"
-
-	"github.com/n1rna/ee-cli/internal/entities"
-	"github.com/n1rna/ee-cli/internal/storage"
 )
 
 // Format represents different output formats
@@ -114,7 +110,7 @@ func (p *Printer) Fatal(message string) {
 	pterm.Fatal.Println(message)
 }
 
-// PrintChange prints a change notification (e.g., "Field: old → new")
+// PrintChange prints a change notification (e.g., "Field: old -> new")
 func (p *Printer) PrintChange(field, oldValue, newValue string) {
 	if !p.quiet {
 		pterm.Printf("  %s: %s → %s\n",
@@ -131,30 +127,6 @@ func (p *Printer) PrintUpdate(message string) {
 	}
 }
 
-// PrintSchema prints a schema in the specified format
-func (p *Printer) PrintSchema(s *entities.Schema) error {
-	switch p.format {
-	case FormatTable:
-		return p.printSchemaTable(s)
-	case FormatJSON:
-		return p.printJSON(s)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
-// PrintSchemaList prints a list of schema summaries
-func (p *Printer) PrintSchemaList(summaries []storage.EntitySummary) error {
-	switch p.format {
-	case FormatTable:
-		return p.printSchemaListTable(summaries)
-	case FormatJSON:
-		return p.printJSON(summaries)
-	default:
-		return fmt.Errorf("unsupported format: %s", p.format)
-	}
-}
-
 // PrintValues prints environment variable values
 func (p *Printer) PrintValues(values map[string]string) error {
 	switch p.format {
@@ -165,85 +137,6 @@ func (p *Printer) PrintValues(values map[string]string) error {
 	default:
 		return fmt.Errorf("unsupported format: %s", p.format)
 	}
-}
-
-// printSchemaTable prints a schema in table format
-func (p *Printer) printSchemaTable(s *entities.Schema) error {
-	// Print header info
-	pterm.DefaultSection.Println("Schema: " + s.Name)
-	pterm.Println(pterm.Gray("ID: " + s.ID))
-	if s.Description != "" {
-		pterm.Println(pterm.LightCyan(s.Description))
-	}
-	pterm.Println(pterm.Gray("Created: " + s.CreatedAt.Format(time.RFC3339)))
-	pterm.Println(pterm.Gray("Updated: " + s.UpdatedAt.Format(time.RFC3339)))
-
-	if len(s.Extends) > 0 {
-		pterm.Println(pterm.Gray("Extends: " + strings.Join(s.Extends, ", ")))
-	}
-
-	pterm.Println()
-	pterm.DefaultHeader.Println("Variables")
-
-	if len(s.Variables) == 0 {
-		pterm.Info.Println("No variables defined")
-		return nil
-	}
-
-	// Build table data
-	tableData := pterm.TableData{
-		{"NAME", "TYPE", "REQUIRED", "DEFAULT", "REGEX"},
-	}
-
-	for _, variable := range s.Variables {
-		required := "No"
-		if variable.Required {
-			required = "Yes"
-		}
-
-		tableData = append(tableData, []string{
-			variable.Name,
-			variable.Type,
-			required,
-			variable.Default,
-			variable.Regex,
-		})
-	}
-
-	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-}
-
-// printSchemaListTable prints a list of schemas in table format
-func (p *Printer) printSchemaListTable(summaries []storage.EntitySummary) error {
-	if len(summaries) == 0 {
-		pterm.Info.Println("No schemas found")
-		return nil
-	}
-
-	// Sort by name
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].Name < summaries[j].Name
-	})
-
-	// Build table data
-	tableData := pterm.TableData{
-		{"NAME", "DESCRIPTION", "CREATED"},
-	}
-
-	for _, summary := range summaries {
-		desc := summary.Description
-		if len(desc) > 50 {
-			desc = desc[:47] + "..."
-		}
-
-		tableData = append(tableData, []string{
-			summary.Name,
-			desc,
-			summary.CreatedAt.Format("2006-01-02"),
-		})
-	}
-
-	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 // printValuesTable prints variable values in table format

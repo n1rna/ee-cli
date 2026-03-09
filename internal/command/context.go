@@ -4,27 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/util"
 )
 
-type (
-	entityManagerKey  struct{}
-	commandContextKey struct{}
-)
-
-// WithEntityManager returns a new context with the entity manager instance
-func WithEntityManager(ctx context.Context, manager *entities.Manager) context.Context {
-	return context.WithValue(ctx, entityManagerKey{}, manager)
-}
-
-// GetEntityManager retrieves the entity manager instance from the context
-func GetEntityManager(ctx context.Context) *entities.Manager {
-	if manager, ok := ctx.Value(entityManagerKey{}).(*entities.Manager); ok {
-		return manager
-	}
-	return nil
-}
+type commandContextKey struct{}
 
 // WithCommandContext returns a new context with the command context instance
 func WithCommandContext(ctx context.Context, cmdCtx *util.CommandContext) context.Context {

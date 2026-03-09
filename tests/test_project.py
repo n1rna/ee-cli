@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import pytest
+import shutil
 
 
 class TestProjectInit:
@@ -34,14 +35,15 @@ class TestProjectInit:
         assert "development" in project_config["environments"]
 
     def test_init_project_with_schema(self, ee_runner, temp_project_dir, fixtures_dir):
-        """Test initializing a project with a schema"""
-        # First create a schema
+        """Test initializing a project with a schema file reference"""
         schema_file = fixtures_dir / "schema-web-service.yaml"
-        ee_runner(["schema", "create", "web-schema", "--import", str(schema_file)])
 
-        # Initialize project with schema
+        # Copy schema file to project directory
+        shutil.copy(schema_file, Path(temp_project_dir) / "schema.yaml")
+
+        # Initialize project with schema file reference
         result = ee_runner(
-            ["init", "web-project", "--schema", "web-schema"],
+            ["init", "web-project", "--schema", "./schema.yaml"],
             cwd=temp_project_dir
         )
 
@@ -54,6 +56,7 @@ class TestProjectInit:
 
         assert project_config["project"] == "web-project"
         assert "schema" in project_config
+        assert project_config["schema"]["ref"] == "./schema.yaml"
 
     def test_init_project_with_inline_schema(self, ee_runner, temp_project_dir):
         """Test initializing a project with inline schema variables"""
@@ -121,14 +124,15 @@ class TestProjectEnvironments:
 class TestProjectVerify:
     """Test project verification"""
 
-    def test_verify_valid_project(self, ee_runner, temp_project_dir, fixtures_dir, generic_schema):
-        """Test verifying a valid project configuration"""
-        # Create schema
+    def test_verify_valid_project(self, ee_runner, temp_project_dir, fixtures_dir):
+        """Test verifying a valid project configuration with schema file"""
         schema_file = fixtures_dir / "schema-web-service.yaml"
-        ee_runner(["schema", "create", "verify-schema", "--import", str(schema_file)])
 
-        # Initialize project
-        ee_runner(["init", "verify-project", "--schema", "verify-schema"], cwd=temp_project_dir)
+        # Copy schema file to project directory
+        shutil.copy(schema_file, Path(temp_project_dir) / "schema.yaml")
+
+        # Initialize project with schema file reference
+        ee_runner(["init", "verify-project", "--schema", "./schema.yaml"], cwd=temp_project_dir)
 
         # Create .env file for development environment with required variables
         dev_env = Path(temp_project_dir) / ".env.development"

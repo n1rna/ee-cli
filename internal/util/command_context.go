@@ -7,14 +7,12 @@ import (
 	"strings"
 
 	"github.com/n1rna/ee-cli/internal/config"
-	"github.com/n1rna/ee-cli/internal/entities"
 	"github.com/n1rna/ee-cli/internal/parser"
 )
 
 // CommandContext provides unified context for all commands, including project detection
 type CommandContext struct {
 	Config           *config.Config
-	Manager          *entities.Manager
 	ProjectConfig    *parser.ProjectConfig
 	IsInProject      bool
 	ProjectLoadError error // Stores any error from loading project config
@@ -22,12 +20,6 @@ type CommandContext struct {
 
 // NewCommandContext creates a new command context with automatic project detection
 func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
-	// Initialize manager for entity operations
-	manager, err := entities.NewManager(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize manager: %w", err)
-	}
-
 	// Try to load project configuration
 	var projectConfig *parser.ProjectConfig
 	var projectLoadErr error
@@ -40,7 +32,6 @@ func NewCommandContext(cfg *config.Config) (*CommandContext, error) {
 
 	context := &CommandContext{
 		Config:           cfg,
-		Manager:          manager,
 		ProjectConfig:    projectConfig,
 		IsInProject:      isInProject,
 		ProjectLoadError: projectLoadErr,

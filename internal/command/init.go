@@ -38,8 +38,8 @@ Examples:
   # Initialize with specific project name
   ee init my-api
 
-  # Initialize with schema reference
-  ee init my-api --schema web-service
+  # Initialize with schema file reference
+  ee init my-api --schema ./schema.yaml
 
   # Initialize with inline schema variables
   ee init my-api --var "PORT:number:Server port:false:3000" --var "NODE_ENV:string:Environment:true:development"
@@ -49,7 +49,7 @@ Examples:
 	}
 
 	cmd.Flags().
-		StringP("schema", "s", "", "Schema reference to use (local://schema-name)")
+		StringP("schema", "s", "", "Schema file reference (e.g., ./schema.yaml)")
 	cmd.Flags().
 		StringSlice("var", []string{}, "Add schema variable (format:name:type:title:required:default)")
 	cmd.Flags().BoolP("force", "f", false, "Overwrite existing .ee file")
@@ -118,22 +118,16 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save %s file: %w", config.ProjectConfigFileName, err)
 	}
 
-	// Get entity manager from context for schema loading
-	manager := GetEntityManager(cmd.Context())
-	if manager == nil {
-		printer.Warning("Entity manager not available - .env files will use basic schema")
-	}
-
 	// Create sample .env files
-	err = c.createSampleEnvFiles(projectConfig, manager)
+	err = c.createSampleEnvFiles(projectConfig)
 	if err != nil {
 		printer.Warning(fmt.Sprintf("Failed to create sample .env files: %v", err))
 	}
 
-	printer.Success(fmt.Sprintf("✓ Initialized ee project: %s", projectName))
-	printer.Info(fmt.Sprintf("✓ Created %s configuration file", config.ProjectConfigFileName))
+	printer.Success(fmt.Sprintf("Initialized ee project: %s", projectName))
+	printer.Info(fmt.Sprintf("Created %s configuration file", config.ProjectConfigFileName))
 	if len(projectConfig.Environments) > 0 {
-		printer.Info("✓ Created sample .env files for environments")
+		printer.Info("Created sample .env files for environments")
 	}
 
 	// Show next steps
@@ -227,7 +221,6 @@ func (c *InitCommand) parseVariableDefinition(varDef string) (entities.Variable,
 // createSampleEnvFiles creates sample .env files for each environment
 func (c *InitCommand) createSampleEnvFiles(
 	projectConfig *parser.ProjectConfig,
-	manager *entities.Manager,
 ) error {
 	for envName, envDef := range projectConfig.Environments {
 		// Determine .env file from environment definition
@@ -238,13 +231,9 @@ func (c *InitCommand) createSampleEnvFiles(
 
 		// Create the .env file if it doesn't exist
 		if _, err := os.Stat(envFile); os.IsNotExist(err) {
-			err := c.createSampleEnvFile(
-				envFile, projectConfig.Schema, manager,
-			)
+			err := c.createSampleEnvFile(envFile, projectConfig.Schema)
 			if err != nil {
-				return fmt.Errorf(
-					"failed to create %s: %w", envFile, err,
-				)
+				return fmt.Errorf("failed to create %s: %w", envFile, err)
 			}
 		}
 	}
@@ -255,18 +244,20 @@ func (c *InitCommand) createSampleEnvFiles(
 func (c *InitCommand) createSampleEnvFile(
 	filename string,
 	schema parser.ProjectConfigSchema,
-	manager *entities.Manager,
 ) error {
 	var variables map[string]entities.Variable
 
 	// Handle schema reference vs inline schema
 	if schema.Ref != "" {
-		// Try to load the referenced schema
-		loadedVars, err := c.loadSchemaVariables(schema.Ref, manager)
+		// Try to load the referenced schema file
+		loaded, err := entities.ResolveSchemaRef(schema.Ref)
 		if err != nil {
 			return fmt.Errorf("failed to load schema '%s': %w", schema.Ref, err)
 		}
-		variables = loadedVars
+		variables = make(map[string]entities.Variable)
+		for _, v := range loaded.Variables {
+			variables[v.Name] = v
+		}
 	} else {
 		variables = schema.Variables
 	}
@@ -294,25 +285,6 @@ func (c *InitCommand) createSampleEnvFile(
 	// Use the reusable dotenv parser to export the file
 	dotenvParser := parser.NewAnnotatedDotEnvParser()
 	return dotenvParser.ExportAnnotatedDotEnv(values, schemaEntity, filename)
-}
-
-// loadSchemaVariables loads variables from a schema reference using the schema manager
-func (c *InitCommand) loadSchemaVariables(
-	schemaRef string,
-	manager *entities.Manager,
-) (map[string]entities.Variable, error) {
-	// Use the schema manager to load the schema by reference
-	schema, err := manager.Schemas.GetByReference(schemaRef)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert schema variables to map
-	variables := make(map[string]entities.Variable)
-	for _, variable := range schema.Variables {
-		variables[variable.Name] = variable
-	}
-	return variables, nil
 }
 
 // GetCurrentProject reads the project name from .ee file in current directory

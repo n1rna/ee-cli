@@ -1,4 +1,4 @@
-// Package manager provides validation logic for ee manager.
+// Package entities provides validation logic for ee schemas.
 package entities
 
 import (
@@ -6,17 +6,15 @@ import (
 	"regexp"
 )
 
-// Validator handles schema validation logic with direct access to entity managers
+// Validator handles schema validation logic
 type Validator struct {
 	compiledRegexes map[string]*regexp.Regexp
-	manager         *Manager // Direct access to entity managers
 }
 
 // NewValidator creates a new validator instance
-func NewValidator(manager *Manager) *Validator {
+func NewValidator() *Validator {
 	return &Validator{
 		compiledRegexes: make(map[string]*regexp.Regexp),
-		manager:         manager,
 	}
 }
 
@@ -63,14 +61,12 @@ func (v *Validator) ValidateValue(variable *Variable, value string) error {
 
 	switch variable.Type {
 	case "number":
-		// Add number validation logic
 		// TODO: Implement number parsing and validation
 	case "boolean":
 		if value != "true" && value != "false" {
 			return fmt.Errorf("boolean value must be 'true' or 'false'")
 		}
 	case "url":
-		// Add URL validation logic
 		// TODO: Implement URL validation
 	}
 
@@ -86,71 +82,13 @@ func (v *Validator) ValidateValue(variable *Variable, value string) error {
 	return nil
 }
 
-// resolveSchema resolves a schema with all its inherited variables
-func (v *Validator) resolveSchema(
-	schema *Schema,
-	visited map[string]bool,
-) (*Schema, error) {
-	if visited[schema.ID] {
-		return nil, fmt.Errorf("circular dependency detected in schema %s", schema.Name)
-	}
-	visited[schema.ID] = true
-
-	resolved := &Schema{
-		Entity:    schema.Entity,
-		Extends:   schema.Extends,
-		Variables: make([]Variable, 0),
-	}
-
-	// Resolve extended schemas first
-	for _, extendNameOrUUID := range schema.Extends {
-		extendSchema, err := v.manager.Schemas.Get(extendNameOrUUID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load extended schema %s: %w", extendNameOrUUID, err)
-		}
-
-		// Recursively resolve the extended schema
-		resolvedExtend, err := v.resolveSchema(extendSchema, visited)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add variables from extended schema
-		resolved.Variables = append(resolved.Variables, resolvedExtend.Variables...)
-	}
-
-	// Add/override with current schema's variables
-	variableMap := make(map[string]Variable)
-	for _, v := range resolved.Variables {
-		variableMap[v.Name] = v
-	}
-	for _, v := range schema.Variables {
-		variableMap[v.Name] = v
-	}
-
-	// Convert back to slice
-	resolved.Variables = make([]Variable, 0, len(variableMap))
-	for _, v := range variableMap {
-		resolved.Variables = append(resolved.Variables, v)
-	}
-
-	return resolved, nil
-}
-
 // ValidateSchema checks if a schema definition is valid
 func (v *Validator) ValidateSchema(schema *Schema) error {
 	if schema.Name == "" {
 		return fmt.Errorf("schema name cannot be empty")
 	}
 
-	// Resolve schema inheritance
-	resolved, err := v.resolveSchema(schema, make(map[string]bool))
-	if err != nil {
-		return fmt.Errorf("failed to resolve schema inheritance: %w", err)
-	}
-
-	// Validate all variables
-	for _, variable := range resolved.Variables {
+	for _, variable := range schema.Variables {
 		if err := v.validateVariable(&variable); err != nil {
 			return fmt.Errorf("invalid variable %s: %w", variable.Name, err)
 		}

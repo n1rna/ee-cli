@@ -3,7 +3,6 @@ module github.com/n1rna/ee-cli
 go 1.23.3
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/pterm/pterm v0.12.81
 	github.com/spf13/cobra v1.8.1
 	gopkg.in/yaml.v3 v3.0.1
