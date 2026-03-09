@@ -112,7 +112,17 @@ build-darwin-arm64: ## Build for macOS (arm64/Apple Silicon)
 	@GOOS=darwin GOARCH=arm64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/ee
 
 .PHONY: build-all
-build-all: build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64 ## Build for all platforms
+build-all: build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64 package ## Build for all platforms
+
+.PHONY: package
+package: ## Create tar.gz archives for all built binaries
+	@echo "Packaging binaries..."
+	@cd $(BUILD_DIR) && for f in $(BINARY_NAME)-*; do \
+		if [ -f "$$f" ]; then \
+			echo "  Packaging $$f..."; \
+			tar czf "$$f.tar.gz" "$$f"; \
+		fi; \
+	done
 
 # Release management
 .PHONY: release

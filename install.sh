@@ -216,11 +216,66 @@ suggest_path_update() {
     fi
 }
 
+# Download checksums and verify
+verify_checksum() {
+    local tmp_dir="$1"
+    local archive_name="$2"
+
+    if [ "${SKIP_CHECKSUM:-}" = "true" ]; then
+        warn "Skipping checksum verification"
+        return
+    fi
+
+    local checksums_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
+
+    log "Verifying checksum..."
+
+    # Download checksums
+    if command -v curl >/dev/null 2>&1; then
+        curl -sL "$checksums_url" -o "$tmp_dir/checksums.txt"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$checksums_url" -O "$tmp_dir/checksums.txt"
+    else
+        warn "Cannot verify checksum: neither curl nor wget available"
+        return
+    fi
+
+    # Verify checksum against the archive
+    if command -v sha256sum >/dev/null 2>&1; then
+        local expected_checksum=$(grep "$archive_name" "$tmp_dir/checksums.txt" | cut -d' ' -f1)
+        local actual_checksum=$(sha256sum "$tmp_dir/$archive_name" | cut -d' ' -f1)
+
+        if [ "$expected_checksum" != "$actual_checksum" ]; then
+            error "Checksum verification failed!"
+            error "Expected: $expected_checksum"
+            error "Actual: $actual_checksum"
+            exit 1
+        fi
+
+        log "Checksum verified"
+    elif command -v shasum >/dev/null 2>&1; then
+        local expected_checksum=$(grep "$archive_name" "$tmp_dir/checksums.txt" | cut -d' ' -f1)
+        local actual_checksum=$(shasum -a 256 "$tmp_dir/$archive_name" | cut -d' ' -f1)
+
+        if [ "$expected_checksum" != "$actual_checksum" ]; then
+            error "Checksum verification failed!"
+            error "Expected: $expected_checksum"
+            error "Actual: $actual_checksum"
+            exit 1
+        fi
+
+        log "Checksum verified"
+    else
+        warn "sha256sum/shasum not available - skipping checksum verification"
+    fi
+}
+
 # Download and install
 install_binary() {
     local tmp_dir="/tmp/ee-install-$$"
     local binary_name="${BINARY_NAME}-${PLATFORM}${BINARY_SUFFIX}"
-    local download_url="https://github.com/$REPO/releases/download/$VERSION/$binary_name"
+    local archive_name="${binary_name}.tar.gz"
+    local download_url="https://github.com/$REPO/releases/download/$VERSION/$archive_name"
 
     log "Downloading ee $VERSION for $PLATFORM..."
     debug "Download URL: $download_url"
@@ -229,17 +284,32 @@ install_binary() {
     mkdir -p "$tmp_dir"
     trap 'rm -rf "$tmp_dir"' EXIT
 
-    # Download binary
+    # Download archive
     if command -v curl >/dev/null 2>&1; then
-        if ! curl -sL "$download_url" -o "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"; then
-            error "Failed to download $binary_name"
+        if ! curl -sL "$download_url" -o "$tmp_dir/$archive_name"; then
+            error "Failed to download $archive_name"
             exit 1
         fi
     elif command -v wget >/dev/null 2>&1; then
-        if ! wget -q "$download_url" -O "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"; then
-            error "Failed to download $binary_name"
+        if ! wget -q "$download_url" -O "$tmp_dir/$archive_name"; then
+            error "Failed to download $archive_name"
             exit 1
         fi
+    fi
+
+    # Verify checksum before extraction
+    verify_checksum "$tmp_dir" "$archive_name"
+
+    # Extract binary from archive
+    log "Extracting archive..."
+    if ! tar xzf "$tmp_dir/$archive_name" -C "$tmp_dir"; then
+        error "Failed to extract $archive_name"
+        exit 1
+    fi
+
+    # Rename extracted binary to just the binary name
+    if [ -f "$tmp_dir/$binary_name" ]; then
+        mv "$tmp_dir/$binary_name" "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"
     fi
 
     # Make binary executable
@@ -277,47 +347,6 @@ install_binary() {
     else
         error "Installation verification failed"
         exit 1
-    fi
-}
-
-# Download checksums and verify
-verify_checksum() {
-    if [ "${SKIP_CHECKSUM:-}" = "true" ]; then
-        warn "Skipping checksum verification"
-        return
-    fi
-
-    local tmp_dir="/tmp/ee-install-$$"
-    local binary_name="${BINARY_NAME}-${PLATFORM}${BINARY_SUFFIX}"
-    local checksums_url="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
-
-    log "Verifying checksum..."
-
-    # Download checksums
-    if command -v curl >/dev/null 2>&1; then
-        curl -sL "$checksums_url" -o "$tmp_dir/checksums.txt"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q "$checksums_url" -O "$tmp_dir/checksums.txt"
-    else
-        warn "Cannot verify checksum: neither curl nor wget available"
-        return
-    fi
-
-    # Verify checksum
-    if command -v sha256sum >/dev/null 2>&1; then
-        local expected_checksum=$(grep "$binary_name" "$tmp_dir/checksums.txt" | cut -d' ' -f1)
-        local actual_checksum=$(sha256sum "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX" | cut -d' ' -f1)
-
-        if [ "$expected_checksum" != "$actual_checksum" ]; then
-            error "Checksum verification failed!"
-            error "Expected: $expected_checksum"
-            error "Actual: $actual_checksum"
-            exit 1
-        fi
-
-        log "✅ Checksum verified"
-    else
-        warn "sha256sum not available - skipping checksum verification"
     fi
 }
 
@@ -372,7 +401,6 @@ EOF
     get_latest_version
     check_version_exists
     install_binary
-    verify_checksum
 }
 
 # Run main function

@@ -34,7 +34,7 @@ jobs:
     - name: Create checksums
       run: |
         cd build
-        sha256sum * > checksums.txt
+        sha256sum *.tar.gz > checksums.txt
         cat checksums.txt
 
     - name: Generate changelog
@@ -78,11 +78,11 @@ jobs:
         name: Release ${{ steps.version.outputs.VERSION }}
         body_path: release_body.txt
         files: |
-          build/ee-linux-amd64
-          build/ee-linux-arm64
-          build/ee-windows-amd64.exe
-          build/ee-darwin-amd64
-          build/ee-darwin-arm64
+          build/ee-linux-amd64.tar.gz
+          build/ee-linux-arm64.tar.gz
+          build/ee-windows-amd64.exe.tar.gz
+          build/ee-darwin-amd64.tar.gz
+          build/ee-darwin-arm64.tar.gz
           build/checksums.txt
         draft: false
         prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
