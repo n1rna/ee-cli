@@ -102,6 +102,18 @@ func runPush(cmd *cobra.Command, args []string) error {
 		mode = origin.DefaultMode(originCfg.Type)
 	}
 
+	// Create origin driver and check prerequisites early (before environment
+	// resolution loads .env files that could pollute the subprocess environment)
+	driver, err := origin.New(originName, originCfg)
+	if err != nil {
+		return err
+	}
+
+	printer.Info(fmt.Sprintf("Checking %s prerequisites...", originCfg.Type))
+	if err := driver.CheckPrerequisites(); err != nil {
+		return err
+	}
+
 	// Resolve environment values
 	envDef, err := pc.GetEnvironment(envName)
 	if err != nil {
@@ -121,18 +133,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 	if len(values) == 0 {
 		printer.Warning(fmt.Sprintf("No values found for environment %q", envName))
 		return nil
-	}
-
-	// Create origin driver
-	driver, err := origin.New(originName, originCfg)
-	if err != nil {
-		return err
-	}
-
-	// Check prerequisites
-	printer.Info(fmt.Sprintf("Checking %s prerequisites...", originCfg.Type))
-	if err := driver.CheckPrerequisites(); err != nil {
-		return err
 	}
 
 	// Show what we're about to do
