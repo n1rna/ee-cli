@@ -51,7 +51,8 @@ func runAuth(cmd *cobra.Command, args []string) error {
 
 	// Try to get project context for configured origins
 	ctx := GetCommandContext(cmd.Context())
-	if ctx != nil && ctx.IsInProject && ctx.ProjectConfig != nil && len(ctx.ProjectConfig.Origins) > 0 {
+	if ctx != nil && ctx.IsInProject && ctx.ProjectConfig != nil &&
+		len(ctx.ProjectConfig.Origins) > 0 {
 		// Check tools for configured origins
 		tools := map[string]bool{}
 		for _, cfg := range ctx.ProjectConfig.Origins {
@@ -77,8 +78,8 @@ func runAuth(cmd *cobra.Command, args []string) error {
 
 	// No project context — check both common tools
 	printer.Info("No .ee project found, checking common tools...")
-	checkTool(printer, "gh")
-	checkTool(printer, "wrangler")
+	_ = checkTool(printer, "gh")
+	_ = checkTool(printer, "wrangler")
 	return nil
 }
 

@@ -31,14 +31,19 @@ func (c *Cloudflare) CheckPrerequisites() error {
 
 	out, err := RunCommand("wrangler", "whoami")
 	if err != nil {
-		return fmt.Errorf("'wrangler' is not authenticated. Run 'wrangler login' first.\n%s", string(out))
+		return fmt.Errorf(
+			"'wrangler' is not authenticated. Run 'wrangler login' first.\n%s",
+			string(out),
+		)
 	}
 
 	return nil
 }
 
 // Push pushes secrets to Cloudflare Workers.
-func (c *Cloudflare) Push(env string, values map[string]string, mode PushMode, dryRun bool) (*PushResult, error) {
+func (c *Cloudflare) Push(
+	env string, values map[string]string, mode PushMode, dryRun bool,
+) (*PushResult, error) {
 	if c.cfg.Worker == "" {
 		return nil, fmt.Errorf("cloudflare origin requires 'worker' field in config")
 	}

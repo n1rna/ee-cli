@@ -87,7 +87,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 			available = append(available, k)
 		}
 		sort.Strings(available)
-		return fmt.Errorf("origin %q not found in project (available: %s)", originName, strings.Join(available, ", "))
+		return fmt.Errorf(
+			"origin %q not found in project (available: %s)",
+			originName, strings.Join(available, ", "),
+		)
 	}
 
 	// Determine push mode
@@ -160,9 +163,14 @@ func runPush(cmd *cobra.Command, args []string) error {
 }
 
 // resolveArgs resolves origin name and environment name from positional arguments.
-func resolveArgs(args []string, origins map[string]origin.Config) (originName, envName string, err error) {
+func resolveArgs(
+	args []string, origins map[string]origin.Config,
+) (originName, envName string, err error) {
 	if len(origins) == 0 {
-		return "", "", fmt.Errorf("no origins configured in .ee file. Add an 'origins' section to your project config")
+		return "", "", fmt.Errorf(
+			"no origins configured in .ee file. " +
+				"Add an 'origins' section to your project config",
+		)
 	}
 
 	if len(args) == 2 {
@@ -184,12 +192,20 @@ func resolveArgs(args []string, origins map[string]origin.Config) (originName, e
 	}
 	sort.Strings(available)
 	return "", "", fmt.Errorf(
-		"multiple origins configured — specify which one: ee push <origin> %s\navailable origins: %s",
-		envName, strings.Join(available, ", "))
+		"multiple origins configured — specify which one: "+
+			"ee push <origin> %s\navailable origins: %s",
+		envName,
+		strings.Join(available, ", "),
+	)
 }
 
 // printSecretsSummary shows a preview of what would be pushed.
-func printSecretsSummary(printer *output.Printer, values map[string]string, mode origin.PushMode, cfg origin.Config) {
+func printSecretsSummary(
+	printer *output.Printer,
+	values map[string]string,
+	mode origin.PushMode,
+	cfg origin.Config,
+) {
 	keys := make([]string, 0, len(values))
 	for k := range values {
 		keys = append(keys, k)

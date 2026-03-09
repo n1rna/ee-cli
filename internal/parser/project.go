@@ -13,10 +13,10 @@ import (
 
 // ProjectConfig represents the structure of a .ee project configuration file
 type ProjectConfig struct {
-	Project      string                           `json:"project"`            // Project UUID or name
-	Schema       ProjectConfigSchema              `json:"schema"`             // Schema definition or reference
-	Environments map[string]EnvironmentDefinition `json:"environments"`       // Environment configurations
-	Origins      map[string]origin.Config         `json:"origins,omitempty"`  // Remote origin configurations
+	Project      string                           `json:"project"`           // Project UUID or name
+	Schema       ProjectConfigSchema              `json:"schema"`            // Schema definition or reference
+	Environments map[string]EnvironmentDefinition `json:"environments"`      // Environment configurations
+	Origins      map[string]origin.Config         `json:"origins,omitempty"` // Remote origin configurations
 }
 
 // ProjectConfigSchema defines the schema for the project, either inline or by reference

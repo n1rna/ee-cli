@@ -324,4 +324,3 @@ func GetCurrentProject() (string, error) {
 	}
 	return projectConfig.Project, nil
 }
-

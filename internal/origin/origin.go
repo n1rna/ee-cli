@@ -17,15 +17,13 @@ const (
 
 // Config represents an origin configuration in the .ee project file.
 type Config struct {
-	Type string `json:"type"` // "github" or "cloudflare"
-
-	// Mode controls how secrets are pushed: "bundled" or "individual"
-	Mode PushMode `json:"mode,omitempty"`
+	Type string   `json:"type"`           // "github" or "cloudflare"
+	Mode PushMode `json:"mode,omitempty"` // "bundled" or "individual"
 
 	// GitHub-specific fields
-	Repo        string `json:"repo,omitempty"`         // e.g. "owner/repo", defaults to current repo
-	SecretName  string `json:"secret_name,omitempty"`   // bundled mode secret name (default: "ENV_<ENV>")
-	Environment string `json:"environment,omitempty"`   // GitHub environment name
+	Repo        string `json:"repo,omitempty"`        // e.g. "owner/repo", defaults to current repo
+	SecretName  string `json:"secret_name,omitempty"` // bundled mode secret name (default: "ENV_<ENV>")
+	Environment string `json:"environment,omitempty"` // GitHub environment name
 
 	// Cloudflare-specific fields
 	Worker string `json:"worker,omitempty"` // Cloudflare Worker name
@@ -57,7 +55,10 @@ func New(name string, cfg Config) (Origin, error) {
 	case "cloudflare":
 		return NewCloudflare(name, cfg), nil
 	default:
-		return nil, fmt.Errorf("unsupported origin type: %q (supported: github, cloudflare)", cfg.Type)
+		return nil, fmt.Errorf(
+			"unsupported origin type: %q (supported: github, cloudflare)",
+			cfg.Type,
+		)
 	}
 }
 

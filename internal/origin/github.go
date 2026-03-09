@@ -37,7 +37,9 @@ func (g *GitHub) CheckPrerequisites() error {
 }
 
 // Push pushes secrets to GitHub.
-func (g *GitHub) Push(env string, values map[string]string, mode PushMode, dryRun bool) (*PushResult, error) {
+func (g *GitHub) Push(
+	env string, values map[string]string, mode PushMode, dryRun bool,
+) (*PushResult, error) {
 	if mode == "" {
 		mode = ModeBundled
 	}
@@ -53,7 +55,9 @@ func (g *GitHub) Push(env string, values map[string]string, mode PushMode, dryRu
 }
 
 // pushBundled pushes all secrets as a single multi-line KEY=VALUE secret.
-func (g *GitHub) pushBundled(env string, values map[string]string, dryRun bool) (*PushResult, error) {
+func (g *GitHub) pushBundled(
+	env string, values map[string]string, dryRun bool,
+) (*PushResult, error) {
 	secretName := g.cfg.SecretName
 	if secretName == "" {
 		secretName = fmt.Sprintf("ENV_%s", strings.ToUpper(env))
@@ -80,7 +84,9 @@ func (g *GitHub) pushBundled(env string, values map[string]string, dryRun bool) 
 }
 
 // pushIndividual pushes each secret as a separate GitHub secret.
-func (g *GitHub) pushIndividual(env string, values map[string]string, dryRun bool) (*PushResult, error) {
+func (g *GitHub) pushIndividual(
+	_ string, values map[string]string, dryRun bool,
+) (*PushResult, error) {
 	result := &PushResult{}
 
 	keys := sortedKeys(values)
