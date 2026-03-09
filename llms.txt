@@ -724,11 +724,130 @@ docker-compose --env-file .env up
 
 # Push secrets to GitHub Actions
 ee push github production
+```
 
-# In GitHub Actions, use ee-action to load the bundled secret:
+### GitHub Actions with ee-action
+
+The recommended way to use `ee` in GitHub Actions is with the [ee-action](https://github.com/n1rna/ee-action) composite action.
+
+**Workflow:**
+1. Push secrets from your local machine using `ee push github production` (bundled mode)
+2. In your GitHub Actions workflow, use `ee-action` to hydrate environment files from the bundled secret
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare environment
+        uses: n1rna/ee-action@v1
+        with:
+          environment: production
+          config_path: .ee
+          env_file: .env.production
+          gh_secret: ${{ secrets.ENV_PRODUCTION }}
+
+      # .env.production is now available for subsequent steps
+      - run: docker build --env-file .env.production -t myapp .
+```
+
+**Multi-service example** (separate .ee configs per service):
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Prepare web environment
+    uses: n1rna/ee-action@v1
+    with:
+      environment: production
+      config_path: .ee.web
+      env_file: .env.web.production
+      gh_secret: ${{ secrets.ENV_FILE_WEB }}
+
+  - name: Prepare API environment
+    uses: n1rna/ee-action@v1
+    with:
+      environment: production
+      config_path: .ee.api
+      env_file: .env.api.production
+      gh_secret: ${{ secrets.ENV_FILE_API }}
+```
+
+**JSON output for application config:**
+
+```yaml
+- name: Generate JSON config
+  uses: n1rna/ee-action@v1
+  with:
+    environment: production
+    config_path: .ee
+    env_file: config.json
+    gh_secret: ${{ secrets.ENV_PRODUCTION }}
+    format: json
+```
+
+**Pinning a specific ee version:**
+
+```yaml
+- uses: n1rna/ee-action@v1
+  with:
+    environment: production
+    config_path: .ee
+    env_file: .env
+    gh_secret: ${{ secrets.ENV_PRODUCTION }}
+    ee_version: v0.8.2
+```
+
+---
+
+## GitHub Action (ee-action) Reference
+
+[ee-action](https://github.com/n1rna/ee-action) is a reusable GitHub Action that generates environment files from `.ee` config using the ee CLI.
+
+### How ee-action Works
+
+1. **Installs the ee CLI** from GitHub releases (auto-detects OS and architecture)
+2. **Writes `gh_secret`** (a multi-line `KEY=VALUE` string from a GitHub secret) to a temp file
+3. **Runs `ee apply`** on the temp file to load the secret values as environment variables
+4. **Runs `ee hydrate`** in that context to resolve schema variables and produce the output file
+5. Cleans up the temp file
+
+This pairs with `ee push github` which pushes your `.env` file as a bundled `KEY=VALUE` GitHub secret.
+
+### Inputs
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `environment` | Yes | — | Target environment name passed to `ee hydrate` |
+| `config_path` | Yes | — | Path to the `.ee` config file |
+| `env_file` | Yes | — | Output file path for the generated env file |
+| `gh_secret` | Yes | — | Multi-line `KEY=VALUE` string from a GitHub secret |
+| `format` | No | `dotenv` | Output format: `dotenv`, `json`, `yaml` |
+| `ee_version` | No | `latest` | ee CLI version to install (e.g., `v0.8.2`) |
+
+### End-to-End Workflow
+
+```bash
+# LOCAL: Push secrets to GitHub (bundled mode creates a single KEY=VALUE secret)
+ee push github production
+# This creates/updates the secret ENV_PRODUCTION in your GitHub repo
+
+# GITHUB ACTIONS: Hydrate the env file from the secret
 # - uses: n1rna/ee-action@v1
 #   with:
-#     secret: ${{ secrets.ENV_PRODUCTION }}
+#     environment: production
+#     config_path: .ee
+#     env_file: .env.production
+#     gh_secret: ${{ secrets.ENV_PRODUCTION }}
 ```
 
 ---
