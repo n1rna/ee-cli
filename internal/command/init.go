@@ -28,7 +28,7 @@ func NewInitCommand(groupId string) *cobra.Command {
 		Long: `Initialize a new ee project by creating a .ee configuration file in JSON format.
 
 This command creates a .ee file in the current working directory with project
-configuration including schema definitions, environments, and remote references.
+configuration including schema definitions and environments.
 Projects are now completely self-contained and portable.
 
 Examples:
@@ -41,9 +41,6 @@ Examples:
   # Initialize with schema reference
   ee init my-api --schema web-service
 
-  # Initialize with remote URL
-  ee init my-api --remote https://api.ee.dev
-
   # Initialize with inline schema variables
   ee init my-api --var "PORT:number:Server port:false:3000" --var "NODE_ENV:string:Environment:true:development"
 `,
@@ -52,8 +49,7 @@ Examples:
 	}
 
 	cmd.Flags().
-		StringP("schema", "s", "", "Schema reference to use (local://schema-name or remote://path)")
-	cmd.Flags().StringP("remote", "r", "", "Remote URL for synchronization")
+		StringP("schema", "s", "", "Schema reference to use (local://schema-name)")
 	cmd.Flags().
 		StringSlice("var", []string{}, "Add schema variable (format:name:type:title:required:default)")
 	cmd.Flags().BoolP("force", "f", false, "Overwrite existing .ee file")
@@ -70,7 +66,6 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 
 	// Get flags
 	schemaRef, _ := cmd.Flags().GetString("schema")
-	remote, _ := cmd.Flags().GetString("remote")
 	variables, _ := cmd.Flags().GetStringSlice("var")
 	force, _ := cmd.Flags().GetBool("force")
 
@@ -106,7 +101,6 @@ func (c *InitCommand) Run(cmd *cobra.Command, args []string) error {
 	// Create project configuration
 	projectConfig := &parser.ProjectConfig{
 		Project: projectName,
-		Remote:  remote,
 		Schema:  schema,
 		Environments: map[string]parser.EnvironmentDefinition{
 			"development": {
@@ -331,11 +325,3 @@ func GetCurrentProject() (string, error) {
 	return projectConfig.Project, nil
 }
 
-// GetCurrentRemote reads the remote URL from .ee file in current directory
-func GetCurrentRemote() (string, error) {
-	projectConfig, err := parser.LoadProjectConfig()
-	if err != nil {
-		return "", err
-	}
-	return projectConfig.Remote, nil
-}

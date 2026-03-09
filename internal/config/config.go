@@ -19,30 +19,12 @@ type Config struct {
 
 	// ConfigFile is an optional path to the project config file (default: .ee in cwd)
 	ConfigFile string
-
-	// API settings
-	API APIConfig
-}
-
-// APIConfig holds API-related configuration
-type APIConfig struct {
-	// Enabled indicates if API integration is enabled
-	Enabled bool
-	// BaseURL is the API endpoint URL
-	BaseURL string
-	// APIKey is the authentication key for the API
-	APIKey string
 }
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		BaseDir: getDefaultBaseDir(),
-		API: APIConfig{
-			Enabled: false,
-			BaseURL: "http://127.0.0.1:8000",
-			APIKey:  "",
-		},
 	}
 }
 
@@ -69,15 +51,6 @@ func LoadConfig() (*Config, error) {
 	// Override with environment variables if present
 	if envDir := os.Getenv("EE_HOME"); envDir != "" {
 		cfg.BaseDir = envDir
-	}
-
-	// Override API settings from environment
-	if apiURL := os.Getenv("EE_API_URL"); apiURL != "" {
-		cfg.API.BaseURL = apiURL
-	}
-	if apiKey := os.Getenv("EE_API_KEY"); apiKey != "" {
-		cfg.API.APIKey = apiKey
-		cfg.API.Enabled = true
 	}
 
 	// Validate configuration
@@ -109,7 +82,6 @@ func (c *Config) EnsureDirectories() error {
 	dirs := []string{
 		c.BaseDir,
 		filepath.Join(c.BaseDir, "schemas"),
-		filepath.Join(c.BaseDir, "projects"),
 	}
 
 	for _, dir := range dirs {

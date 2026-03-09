@@ -1,197 +1,213 @@
-// Package command implements the ee push command for pushing local entities to remote
+// Package command implements the ee push command for pushing secrets to remote origins.
 package command
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/n1rna/ee-cli/internal/api"
-	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/origin"
 	"github.com/n1rna/ee-cli/internal/output"
+	"github.com/n1rna/ee-cli/internal/util"
 )
 
-// PushCommand handles the ee push command
-type PushCommand struct{}
-
-// NewPushCommand creates a new ee push command
+// NewPushCommand creates the ee push command for pushing secrets to origins.
 func NewPushCommand(groupId string) *cobra.Command {
-	pc := &PushCommand{}
-
 	cmd := &cobra.Command{
-		Use:   "push",
-		Short: "Push local entities to remote",
-		Long: `Push local schemas and config sheets to the remote server.
+		Use:   "push [origin] <environment>",
+		Short: "Push environment secrets to a remote origin",
+		Long: `Push secrets from a local environment to a remote origin (GitHub, Cloudflare).
 
-This command synchronizes your local entities with the remote server, uploading
-any changes or new entities that exist locally but not remotely.
+The environment is resolved from the .ee project file and its config sheets / .env files.
+The origin specifies where to push (configured in the .ee file under "origins").
+
+Push modes:
+  bundled     - Push all secrets as a single KEY=VALUE secret (default for GitHub)
+  individual  - Push each secret as a separate key-value pair (default for Cloudflare)
 
 Examples:
-  # Push all entities
-  ee push
+  # Push to the only configured origin
+  ee push production
 
-  # Push only schemas
-  ee push --schemas
+  # Push to a specific origin
+  ee push github production
 
-  # Push only config sheets
-  ee push --sheets
+  # Preview what would be pushed
+  ee push production --dry-run
 
-  # Dry run to see what would be pushed
-  ee push --dry-run`,
-		RunE:    pc.Run,
+  # Override push mode
+  ee push github production --mode individual
+`,
+		Args:    cobra.RangeArgs(1, 2),
+		RunE:    runPush,
 		GroupID: groupId,
 	}
 
-	cmd.Flags().Bool("schemas", false, "Push only schemas")
-	cmd.Flags().Bool("sheets", false, "Push only config sheets")
-	cmd.Flags().Bool("dry-run", false, "Show what would be pushed without actually pushing")
+	cmd.Flags().Bool("dry-run", false, "Show what would be pushed without executing")
 	cmd.Flags().Bool("quiet", false, "Suppress non-error output")
+	cmd.Flags().String("mode", "", "Override push mode (bundled or individual)")
 
 	return cmd
 }
 
-// Run executes the push command
-func (c *PushCommand) Run(cmd *cobra.Command, args []string) error {
-	// Get manager from context
-	manager := GetEntityManager(cmd.Context())
-	if manager == nil {
-		return fmt.Errorf("entity manager not initialized")
-	}
-
-	// Set up printer
+func runPush(cmd *cobra.Command, args []string) error {
 	quiet, _ := cmd.Flags().GetBool("quiet")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	modeOverride, _ := cmd.Flags().GetString("mode")
+
 	printer := output.NewPrinter(output.FormatTable, quiet)
 
-	// Get remote URL
-	remote, err := GetCurrentRemote()
+	// Require project context
+	ctx, err := RequireProjectContext(cmd.Context())
 	if err != nil {
-		return fmt.Errorf("failed to get remote URL: %w", err)
-	}
-	if remote == "" {
-		return fmt.Errorf("no remote URL configured. Use 'ee init --remote <url>' to set one")
+		return err
 	}
 
-	// Create API client
-	client, err := api.ClientFromRemoteURL(remote)
+	pc := ctx.ProjectConfig
+
+	// Resolve origin and environment from args
+	originName, envName, err := resolveArgs(args, pc.Origins)
 	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
+		return err
 	}
 
-	// Get flags
-	schemasOnly, _ := cmd.Flags().GetBool("schemas")
-	sheetsOnly, _ := cmd.Flags().GetBool("sheets")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	// Validate environment exists
+	if !pc.HasEnvironment(envName) {
+		available := strings.Join(pc.GetEnvironmentNames(), ", ")
+		return fmt.Errorf("environment %q not found in project (available: %s)", envName, available)
+	}
 
-	// If no specific flags, push everything
-	pushAll := !schemasOnly && !sheetsOnly
+	// Get origin config
+	originCfg, ok := pc.Origins[originName]
+	if !ok {
+		available := make([]string, 0, len(pc.Origins))
+		for k := range pc.Origins {
+			available = append(available, k)
+		}
+		sort.Strings(available)
+		return fmt.Errorf("origin %q not found in project (available: %s)", originName, strings.Join(available, ", "))
+	}
 
+	// Determine push mode
+	mode := originCfg.Mode
+	if modeOverride != "" {
+		mode = origin.PushMode(modeOverride)
+	}
+	if mode == "" {
+		mode = origin.DefaultMode(originCfg.Type)
+	}
+
+	// Resolve environment values
+	envDef, err := pc.GetEnvironment(envName)
+	if err != nil {
+		return err
+	}
+
+	merger := util.NewConfigSheetMerger(ctx.Manager)
+	values, err := merger.MergeEnvironment(envDef)
+	if err != nil {
+		return fmt.Errorf("failed to resolve environment %q: %w", envName, err)
+	}
+
+	if len(values) == 0 {
+		printer.Warning(fmt.Sprintf("No values found for environment %q", envName))
+		return nil
+	}
+
+	// Create origin driver
+	driver, err := origin.New(originName, originCfg)
+	if err != nil {
+		return err
+	}
+
+	// Check prerequisites
+	printer.Info(fmt.Sprintf("Checking %s prerequisites...", originCfg.Type))
+	if err := driver.CheckPrerequisites(); err != nil {
+		return err
+	}
+
+	// Show what we're about to do
 	if dryRun {
-		printer.Info("Dry run mode - showing what would be pushed:")
+		printer.Info(fmt.Sprintf("Dry run: would push %d secrets to %s (%s, mode: %s)",
+			len(values), originName, originCfg.Type, mode))
+		printSecretsSummary(printer, values, mode, originCfg)
+		return nil
 	}
 
-	// Push schemas
-	if pushAll || schemasOnly {
-		if err := c.pushSchemas(manager, client, printer, dryRun); err != nil {
-			return fmt.Errorf("failed to push schemas: %w", err)
+	printer.Info(fmt.Sprintf("Pushing %d secrets to %s (%s, mode: %s)...",
+		len(values), originName, originCfg.Type, mode))
+
+	// Push
+	result, err := driver.Push(envName, values, mode, false)
+	if err != nil {
+		return fmt.Errorf("push failed: %w", err)
+	}
+
+	// Report results
+	if len(result.Errors) > 0 {
+		for _, e := range result.Errors {
+			printer.Error(fmt.Sprintf("  %v", e))
 		}
-	}
-
-	// Push config sheets
-	if pushAll || sheetsOnly {
-		if err := c.pushConfigSheets(manager, client, printer, dryRun); err != nil {
-			return fmt.Errorf("failed to push config sheets: %w", err)
-		}
-	}
-
-	if !dryRun {
-		printer.Success("Successfully pushed all entities to remote")
+		printer.Warning(fmt.Sprintf("Pushed %d secrets with %d errors",
+			result.SecretsCount, len(result.Errors)))
 	} else {
-		printer.Info("Dry run completed")
+		printer.Success(fmt.Sprintf("Pushed %d secrets to %s", result.SecretsCount, originName))
 	}
 
 	return nil
 }
 
-// pushSchemas pushes all local schemas to remote
-func (c *PushCommand) pushSchemas(
-	manager *entities.Manager,
-	client *api.Client,
-	printer *output.Printer,
-	dryRun bool,
-) error {
-	summaries, err := manager.Schemas.List()
-	if err != nil {
-		return fmt.Errorf("failed to list schemas: %w", err)
+// resolveArgs resolves origin name and environment name from positional arguments.
+func resolveArgs(args []string, origins map[string]origin.Config) (originName, envName string, err error) {
+	if len(origins) == 0 {
+		return "", "", fmt.Errorf("no origins configured in .ee file. Add an 'origins' section to your project config")
 	}
 
-	if len(summaries) == 0 {
-		printer.Info("No schemas to push")
-		return nil
+	if len(args) == 2 {
+		return args[0], args[1], nil
 	}
 
-	printer.Info(fmt.Sprintf("Pushing %d schemas...", len(summaries)))
+	// Single arg — must be environment name, auto-resolve origin
+	envName = args[0]
 
-	for _, summary := range summaries {
-		schema, err := manager.Schemas.GetByID(summary.Name) // summary.Name is UUID in index
-		if err != nil {
-			printer.Warning(fmt.Sprintf("Failed to load schema %s: %v", summary.Name, err))
-			continue
-		}
-
-		if dryRun {
-			printer.Info(fmt.Sprintf("  Would push schema: %s (%s)", schema.Name, schema.ID))
-		} else {
-			// Convert to API type
-			apiSchema := api.SchemaToAPI(schema)
-			if _, err := client.PushSchema(apiSchema); err != nil {
-				printer.Warning(fmt.Sprintf("Failed to push schema %s: %v", schema.Name, err))
-				continue
-			}
-			printer.Info(fmt.Sprintf("  Pushed schema: %s", schema.Name))
+	if len(origins) == 1 {
+		for k := range origins {
+			return k, envName, nil
 		}
 	}
 
-	return nil
+	available := make([]string, 0, len(origins))
+	for k := range origins {
+		available = append(available, k)
+	}
+	sort.Strings(available)
+	return "", "", fmt.Errorf(
+		"multiple origins configured — specify which one: ee push <origin> %s\navailable origins: %s",
+		envName, strings.Join(available, ", "))
 }
 
-// pushConfigSheets pushes all local config sheets to remote
-func (c *PushCommand) pushConfigSheets(
-	manager *entities.Manager,
-	client *api.Client,
-	printer *output.Printer,
-	dryRun bool,
-) error {
-	summaries, err := manager.ConfigSheets.List()
-	if err != nil {
-		return fmt.Errorf("failed to list config sheets: %w", err)
+// printSecretsSummary shows a preview of what would be pushed.
+func printSecretsSummary(printer *output.Printer, values map[string]string, mode origin.PushMode, cfg origin.Config) {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
-	if len(summaries) == 0 {
-		printer.Info("No config sheets to push")
-		return nil
-	}
-
-	printer.Info(fmt.Sprintf("Pushing %d config sheets...", len(summaries)))
-
-	for _, summary := range summaries {
-		sheet, err := manager.ConfigSheets.GetByID(summary.Name) // summary.Name is UUID in index
-		if err != nil {
-			printer.Warning(fmt.Sprintf("Failed to load config sheet %s: %v", summary.Name, err))
-			continue
+	if mode == origin.ModeBundled {
+		secretName := cfg.SecretName
+		if secretName == "" {
+			secretName = "ENV_<ENV>"
 		}
-
-		if dryRun {
-			printer.Info(fmt.Sprintf("  Would push config sheet: %s (%s)", sheet.Name, sheet.ID))
-		} else {
-			// Convert to API type
-			apiSheet := api.ConfigSheetToAPI(sheet)
-			if _, err := client.PushConfigSheet(apiSheet); err != nil {
-				printer.Warning(fmt.Sprintf("Failed to push config sheet %s: %v", sheet.Name, err))
-				continue
-			}
-			printer.Info(fmt.Sprintf("  Pushed config sheet: %s", sheet.Name))
+		printer.Info(fmt.Sprintf("  Secret: %s (bundled, %d variables)", secretName, len(keys)))
+		for _, k := range keys {
+			printer.Printf("    %s=***\n", k)
+		}
+	} else {
+		for _, k := range keys {
+			printer.Printf("  %s=***\n", k)
 		}
 	}
-
-	return nil
 }

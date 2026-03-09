@@ -105,11 +105,8 @@ func main() {
 		command.NewSchemaCommand("entities"), // Schema management
 		command.NewSheetCommand("entities"),  // Config sheet management
 
-		// Remote Operations - require authentication
-		// command.NewPushCommand("authenticated"), // Push to remote
-		// command.NewPullCommand("authenticated"), // Pull from remote
-		// command.NewUICommand("authenticated"),     // Terminal user interface - TODO: refactor
-		// command.NewRemoteCommand("authenticated"), // Remote configuration - TODO: refactor
+		// Remote Operations - push secrets to origins
+		command.NewPushCommand("authenticated"),
 	)
 
 	// Enable version flag

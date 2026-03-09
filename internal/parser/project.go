@@ -8,14 +8,15 @@ import (
 
 	"github.com/n1rna/ee-cli/internal/config"
 	"github.com/n1rna/ee-cli/internal/entities"
+	"github.com/n1rna/ee-cli/internal/origin"
 )
 
 // ProjectConfig represents the structure of a .ee project configuration file
 type ProjectConfig struct {
-	Project      string                           `json:"project"`          // Project UUID or name
-	Remote       string                           `json:"remote,omitempty"` // Remote API endpoint
-	Schema       ProjectConfigSchema              `json:"schema"`           // Schema definition or reference
-	Environments map[string]EnvironmentDefinition `json:"environments"`     // Environment configurations
+	Project      string                           `json:"project"`            // Project UUID or name
+	Schema       ProjectConfigSchema              `json:"schema"`             // Schema definition or reference
+	Environments map[string]EnvironmentDefinition `json:"environments"`       // Environment configurations
+	Origins      map[string]origin.Config         `json:"origins,omitempty"`  // Remote origin configurations
 }
 
 // ProjectConfigSchema defines the schema for the project, either inline or by reference
