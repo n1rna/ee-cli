@@ -90,21 +90,29 @@ dev: ## Run the application in development mode
 	@$(GORUN) ${LDFLAGS} ./cmd/ee
 
 # Cross compilation targets
-.PHONY: build-linux build-windows build-darwin
-build-linux: ## Build for Linux
-	@echo "Building for Linux..."
+.PHONY: build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64
+build-linux: ## Build for Linux (amd64)
+	@echo "Building for Linux (amd64)..."
 	@GOOS=linux GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/ee
+
+build-linux-arm64: ## Build for Linux (arm64)
+	@echo "Building for Linux (arm64)..."
+	@GOOS=linux GOARCH=arm64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/ee
 
 build-windows: ## Build for Windows
 	@echo "Building for Windows..."
 	@GOOS=windows GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/ee
 
-build-darwin: ## Build for macOS
-	@echo "Building for macOS..."
+build-darwin: ## Build for macOS (amd64/Intel)
+	@echo "Building for macOS (amd64)..."
 	@GOOS=darwin GOARCH=amd64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/ee
 
+build-darwin-arm64: ## Build for macOS (arm64/Apple Silicon)
+	@echo "Building for macOS (arm64)..."
+	@GOOS=darwin GOARCH=arm64 $(GOBUILD) ${LDFLAGS} -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/ee
+
 .PHONY: build-all
-build-all: build-linux build-windows build-darwin ## Build for all platforms
+build-all: build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64 ## Build for all platforms
 
 # Release management
 .PHONY: release
