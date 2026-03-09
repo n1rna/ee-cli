@@ -1,0 +1,800 @@
+# ee - Environment Variable Management CLI
+
+> ee is a CLI tool that brings structure and validation to environment variable management. It uses `.ee` project configuration files, `.env` files, and optional schema files to define, validate, and deploy environment variables across environments.
+
+## Installation
+
+```bash
+curl -sSfL https://ee.n1rna.net/install.sh | sh
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/n1rna/ee-cli.git
+cd ee-cli
+go build -o ee ./cmd/ee
+```
+
+## Core Concepts
+
+### Project Configuration (`.ee` file)
+
+Every ee project has a `.ee` file (JSON) in the project root. It defines:
+- **project**: Project name identifier
+- **schema**: Variable definitions (inline or file reference)
+- **environments**: Named environment configurations pointing to `.env` files
+- **origins**: Remote targets for pushing secrets (GitHub, Cloudflare)
+
+### Environment Variables
+
+Variables are stored in standard `.env` files (KEY=VALUE format). Environments can reference a single `.env` file or stack multiple sources with later values overriding earlier ones.
+
+### Schemas
+
+Schemas define the expected structure of environment variables — types, defaults, required flags, and validation patterns. Schemas are loaded from YAML or JSON files referenced in the `.ee` file.
+
+---
+
+## Project Configuration File Format
+
+The `.ee` file is JSON with this structure:
+
+```json
+{
+  "project": "my-api",
+  "schema": {
+    "ref": "./schema.yaml"
+  },
+  "environments": {
+    "development": {
+      "env": ".env.development"
+    },
+    "production": {
+      "env": ".env.production"
+    }
+  },
+  "origins": {
+    "github": {
+      "type": "github",
+      "mode": "bundled",
+      "secret_name": "ENV_PRODUCTION",
+      "repo": "myorg/my-app",
+      "environment": "production"
+    }
+  }
+}
+```
+
+### Schema Section
+
+The schema can be **inline** (variables defined directly) or a **file reference**.
+
+#### Inline Schema
+
+```json
+{
+  "schema": {
+    "variables": {
+      "DATABASE_URL": {
+        "name": "DATABASE_URL",
+        "type": "string",
+        "title": "Database connection URL",
+        "required": true
+      },
+      "PORT": {
+        "name": "PORT",
+        "type": "number",
+        "title": "Server port",
+        "required": false,
+        "default": "3000"
+      },
+      "DEBUG": {
+        "name": "DEBUG",
+        "type": "boolean",
+        "title": "Debug mode",
+        "required": false,
+        "default": "false"
+      }
+    }
+  }
+}
+```
+
+#### File Reference Schema
+
+```json
+{
+  "schema": {
+    "ref": "./schema.yaml"
+  }
+}
+```
+
+Supported reference formats:
+- `./schema.yaml` or `../schema.yaml` — relative path
+- `/absolute/path/schema.yaml` — absolute path
+- `file://path/to/schema.yaml` — explicit file URI
+- `schema.yaml` — plain filename (must have .yaml/.yml/.json extension)
+
+### Environment Section
+
+Each environment maps to `.env` file sources.
+
+#### Single Source
+
+```json
+{
+  "environments": {
+    "development": {
+      "env": ".env.development"
+    }
+  }
+}
+```
+
+#### Multiple Sources (Stacking)
+
+Later sources override earlier ones:
+
+```json
+{
+  "environments": {
+    "production": {
+      "sources": [".env", ".env.production", ".env.secrets"]
+    }
+  }
+}
+```
+
+#### Inline Values in Sources
+
+Sources can include inline key-value objects:
+
+```json
+{
+  "environments": {
+    "staging": {
+      "sources": [
+        ".env",
+        ".env.staging",
+        { "LOG_LEVEL": "debug", "FEATURE_FLAG": "true" }
+      ]
+    }
+  }
+}
+```
+
+### Origins Section
+
+Origins define remote targets for pushing secrets.
+
+#### GitHub Origin
+
+```json
+{
+  "origins": {
+    "github": {
+      "type": "github",
+      "mode": "bundled",
+      "secret_name": "ENV_PRODUCTION",
+      "repo": "myorg/my-app",
+      "environment": "production"
+    }
+  }
+}
+```
+
+Fields:
+- `type`: `"github"` (required)
+- `mode`: `"bundled"` (default) or `"individual"`
+- `secret_name`: Name for the bundled secret (default: `ENV_<ENVIRONMENT>`)
+- `repo`: GitHub repo in `owner/repo` format (default: current repo)
+- `environment`: GitHub environment name for scoped secrets
+
+#### Cloudflare Origin
+
+```json
+{
+  "origins": {
+    "cloudflare": {
+      "type": "cloudflare",
+      "mode": "individual",
+      "worker": "my-worker"
+    }
+  }
+}
+```
+
+Fields:
+- `type`: `"cloudflare"` (required)
+- `mode`: `"individual"` (default) or `"bundled"`
+- `worker`: Cloudflare Worker name (required)
+
+---
+
+## Schema File Format
+
+Schema files define variable structure in YAML or JSON.
+
+### YAML Schema Example
+
+```yaml
+name: web-service
+description: Schema for web service applications
+variables:
+  - name: DATABASE_URL
+    title: Database connection URL
+    type: string
+    required: true
+  - name: PORT
+    title: Server port
+    type: number
+    required: false
+    default: "3000"
+  - name: DEBUG
+    title: Debug mode
+    type: boolean
+    required: false
+    default: "false"
+  - name: API_KEY
+    title: API authentication key
+    type: string
+    required: true
+    regex: "^[a-zA-Z0-9_-]+$"
+```
+
+### JSON Schema Example
+
+```json
+{
+  "name": "web-service",
+  "description": "Schema for web service applications",
+  "variables": [
+    {
+      "name": "DATABASE_URL",
+      "type": "string",
+      "title": "Database connection URL",
+      "required": true
+    },
+    {
+      "name": "PORT",
+      "type": "number",
+      "default": "3000",
+      "required": false
+    }
+  ]
+}
+```
+
+### Variable Properties
+
+| Property   | Type    | Required | Description                                    |
+|------------|---------|----------|------------------------------------------------|
+| `name`     | string  | yes      | Variable name (e.g., `DATABASE_URL`)           |
+| `type`     | string  | yes      | `string`, `number`, `boolean`, or `url`        |
+| `title`    | string  | no       | Human-readable description                     |
+| `required` | boolean | yes      | Whether the variable must be set               |
+| `default`  | string  | no       | Default value if not provided                  |
+| `regex`    | string  | no       | Validation regex pattern                       |
+
+---
+
+## CLI Commands
+
+### `ee` (Root Command)
+
+Display and filter environment variables in the current shell.
+
+```bash
+# Show all environment variables
+ee
+
+# Filter by pattern
+ee --filter 'NODE*'
+ee --filter 'DB_*,DATABASE_*'
+
+# Exclude patterns (prefix with !)
+ee --filter '!CLAUDE*,!PATH*'
+
+# Combine include and exclude
+ee --filter 'NODE*,!NODE_OPTIONS'
+
+# Output as JSON
+ee --format json
+
+# Output as dotenv
+ee --format dotenv
+
+# Mask sensitive values (KEY, SECRET, TOKEN, PASSWORD, etc.)
+ee --mask
+
+# Combine flags
+ee --filter '*KEY*,*SECRET*' --mask --format json
+```
+
+**Flags:**
+- `-I, --filter <pattern>` — Filter variables using wildcard patterns. Separators: `,`, `|`, `/`. Prefix with `!` to exclude.
+- `-f, --format <format>` — Output format: `env` (default), `json`, `dotenv`
+- `-m, --mask` — Replace sensitive values with `***MASKED***`
+
+**Pattern syntax:** Uses shell glob matching (`*` any chars, `?` single char, `[abc]` character class).
+
+**Filter logic:**
+1. If a negative pattern matches → exclude
+2. If any positive pattern matches → include
+3. If only negative patterns exist → include everything except matches
+4. If positive patterns exist → only include matches
+
+---
+
+### `ee init [project-name]`
+
+Initialize a new ee project.
+
+```bash
+# Initialize with current directory name
+ee init
+
+# Initialize with specific name
+ee init my-api
+
+# Initialize with schema file reference
+ee init my-api --schema ./schema.yaml
+
+# Initialize with inline variables
+ee init my-api \
+  --var "DATABASE_URL:string:Database URL:true" \
+  --var "PORT:number:Server port:false:3000"
+
+# Overwrite existing .ee file
+ee init my-api --force
+```
+
+**Flags:**
+- `-s, --schema <path>` — Schema file reference
+- `--var <spec>` — Inline variable in `name:type:title:required[:default]` format (repeatable)
+- `-f, --force` — Overwrite existing `.ee` file
+- `-q, --quiet` — Suppress output
+
+**What it creates:**
+- `.ee` configuration file
+- `.env.development` sample file
+- `.env.production` sample file
+- Default inline schema with `NODE_ENV`, `PORT`, `DEBUG` if no schema specified
+
+---
+
+### `ee apply <environment|file> [-- command [args...]]`
+
+Apply environment variables from project environments or `.env` files.
+
+```bash
+# Start a new shell with development environment
+ee apply development
+
+# Run a command with production environment
+ee apply production -- npm start
+ee apply development -- npm test
+
+# Apply a .env file directly (no .ee file needed)
+ee apply .env
+ee apply .env.staging
+ee apply /path/to/.env.production -- node server.js
+
+# Preview what would be applied (dry-run)
+ee apply development --dry-run
+ee apply development --dry-run --format json
+ee apply development --dry-run --format dotenv
+
+# Export environment to file
+ee apply production --dry-run --format dotenv > .env.prod
+ee apply production --dry-run --format json > config.json
+```
+
+**Flags:**
+- `-d, --dry-run` — Show variables without applying
+- `-f, --format <format>` — Dry-run output format: `env` (default), `dotenv`, `json`
+- `-q, --quiet` — Suppress informational output
+
+**Alias:** `ee a` is shorthand for `ee apply`
+
+**How it detects file vs environment:**
+- Starts with `.`, `/`, or `~` → treated as file path
+- File exists on disk → treated as file path
+- Otherwise → treated as project environment name (requires `.ee` file)
+
+**How environments resolve:**
+1. Find the environment definition in `.ee`
+2. If `env` field set → load that single `.env` file
+3. If `sources` array set → merge all sources left-to-right (later overrides earlier)
+4. Apply variables to a new shell or run the specified command
+
+---
+
+### `ee verify`
+
+Verify project configuration against schema and environment files.
+
+```bash
+# Verify current project
+ee verify
+
+# Verify with detailed output
+ee verify --verbose
+
+# Verify specific environment only
+ee verify --env development
+
+# Auto-fix issues (create missing files, add missing variables)
+ee verify --fix
+```
+
+**Flags:**
+- `--fix` — Auto-fix detected issues
+- `--verbose` — Show detailed output including warnings
+- `--env <name>` — Verify only one environment
+- `--quiet` — Suppress output
+
+**What it checks:**
+- Schema file can be loaded (if referenced)
+- Each environment has a corresponding `.env` file
+- Required variables from schema are present in `.env` files
+- Variables in `.env` files match schema definitions
+
+**What `--fix` does:**
+- Creates missing `.env` files with schema defaults
+- Appends missing required variables to existing `.env` files
+
+---
+
+### `ee hydrate <environment>`
+
+Generate an env file by resolving schema variables from the current shell environment.
+
+```bash
+# Print hydrated env to stdout
+ee hydrate development
+
+# Write to file
+ee hydrate development -o .env
+
+# Output as JSON
+ee hydrate development -f json
+
+# Output as YAML
+ee hydrate development -f yaml -o config.yaml
+```
+
+**Flags:**
+- `-o, --output <path>` — Write to file instead of stdout
+- `-f, --format <format>` — Output format: `dotenv` (default), `json`, `yaml`
+
+**Resolution order for each schema variable:**
+1. Current shell environment value (if set)
+2. Schema default value
+3. Empty string (warns for required variables)
+
+---
+
+### `ee push [origin] <environment>`
+
+Push environment secrets to a remote origin (GitHub or Cloudflare).
+
+```bash
+# Push to the only configured origin
+ee push production
+
+# Push to a specific origin by name
+ee push github production
+
+# Preview what would be pushed
+ee push production --dry-run
+
+# Override push mode
+ee push production --mode individual
+ee push production --mode bundled
+```
+
+**Flags:**
+- `--dry-run` — Preview without pushing
+- `--quiet` — Suppress output
+- `--mode <mode>` — Override push mode: `bundled` or `individual`
+
+**Push modes:**
+- **bundled** (default for GitHub): All secrets combined into a single multi-line `KEY=VALUE` secret. Compatible with [ee-action](https://github.com/n1rna/ee-action) GitHub Action.
+- **individual** (default for Cloudflare): Each secret pushed as a separate key-value pair.
+
+**Prerequisites:**
+- GitHub: `gh` CLI installed and authenticated (`gh auth login`)
+- Cloudflare: `wrangler` CLI installed and authenticated (`wrangler login`)
+
+---
+
+### `ee auth [tool]`
+
+Check authentication status for origin CLI tools.
+
+```bash
+# Check all tools used by configured origins
+ee auth
+
+# Check specific tool
+ee auth gh
+ee auth wrangler
+```
+
+**Supported tools:**
+- `gh` — GitHub CLI (checks `gh auth status`)
+- `wrangler` — Cloudflare Wrangler (checks `wrangler whoami`)
+
+---
+
+## Common Workflows
+
+### Setting Up a New Project
+
+```bash
+# 1. Create project directory
+mkdir my-api && cd my-api
+
+# 2. Create a schema file
+cat > schema.yaml << 'EOF'
+name: my-api
+description: API service configuration
+variables:
+  - name: DATABASE_URL
+    type: string
+    title: Database connection string
+    required: true
+  - name: PORT
+    type: number
+    title: Server port
+    required: false
+    default: "3000"
+  - name: NODE_ENV
+    type: string
+    title: Node environment
+    required: true
+    default: "development"
+  - name: JWT_SECRET
+    type: string
+    title: JWT signing secret
+    required: true
+EOF
+
+# 3. Initialize project with schema
+ee init my-api --schema ./schema.yaml
+
+# 4. Edit the generated .env files
+# .env.development and .env.production were created with defaults
+
+# 5. Verify configuration
+ee verify --verbose
+
+# 6. Use the environment
+ee apply development -- npm start
+```
+
+### Multi-Environment Configuration
+
+`.ee` file:
+```json
+{
+  "project": "my-app",
+  "schema": { "ref": "./schema.yaml" },
+  "environments": {
+    "development": {
+      "sources": [".env", ".env.development"]
+    },
+    "staging": {
+      "sources": [".env", ".env.staging"]
+    },
+    "production": {
+      "sources": [".env", ".env.production", ".env.secrets"]
+    }
+  }
+}
+```
+
+`.env` (shared base):
+```
+APP_NAME=my-app
+LOG_FORMAT=json
+```
+
+`.env.development`:
+```
+DATABASE_URL=postgres://localhost:5432/myapp_dev
+PORT=3000
+DEBUG=true
+```
+
+`.env.production`:
+```
+DATABASE_URL=postgres://prod-host:5432/myapp
+PORT=8080
+DEBUG=false
+```
+
+```bash
+# Apply development
+ee apply development -- npm run dev
+
+# Export production config
+ee apply production --dry-run --format dotenv > .env.prod
+
+# Compare environments
+diff <(ee apply development --dry-run) <(ee apply production --dry-run)
+```
+
+### Pushing Secrets to GitHub
+
+`.ee` file:
+```json
+{
+  "project": "my-app",
+  "schema": { "ref": "./schema.yaml" },
+  "environments": {
+    "production": { "env": ".env.production" }
+  },
+  "origins": {
+    "github": {
+      "type": "github",
+      "mode": "bundled",
+      "secret_name": "ENV_PRODUCTION",
+      "repo": "myorg/my-app",
+      "environment": "production"
+    }
+  }
+}
+```
+
+```bash
+# Check authentication
+ee auth gh
+
+# Preview what would be pushed
+ee push github production --dry-run
+
+# Push secrets
+ee push github production
+```
+
+### Pushing Secrets to Cloudflare Workers
+
+`.ee` file:
+```json
+{
+  "project": "my-worker",
+  "schema": { "ref": "./schema.yaml" },
+  "environments": {
+    "production": { "env": ".env.production" }
+  },
+  "origins": {
+    "cloudflare": {
+      "type": "cloudflare",
+      "mode": "individual",
+      "worker": "my-worker"
+    }
+  }
+}
+```
+
+```bash
+# Check authentication
+ee auth wrangler
+
+# Push individual secrets
+ee push cloudflare production
+```
+
+### Inspecting Current Environment
+
+```bash
+# See all environment variables
+ee
+
+# Find database-related variables
+ee --filter 'DB_*,DATABASE_*,POSTGRES_*'
+
+# See all URLs
+ee --filter '*_URL,*_ENDPOINT'
+
+# Audit secrets (masked)
+ee --filter '*KEY*,*SECRET*,*TOKEN*,*PASSWORD*' --mask
+
+# Export current environment
+ee --format dotenv > current.env
+ee --format json > environment.json
+
+# Filter and export
+ee --filter 'APP_*,!*SECRET*' --format dotenv > safe-config.env
+```
+
+### CI/CD Integration
+
+```bash
+# Validate environment before deployment
+ee verify --env production
+
+# Generate .env file for Docker
+ee apply production --dry-run --format dotenv > .env
+docker-compose --env-file .env up
+
+# Push secrets to GitHub Actions
+ee push github production
+
+# In GitHub Actions, use ee-action to load the bundled secret:
+# - uses: n1rna/ee-action@v1
+#   with:
+#     secret: ${{ secrets.ENV_PRODUCTION }}
+```
+
+---
+
+## .env File Format
+
+Standard KEY=VALUE format with optional annotations:
+
+```bash
+# schema: ./schema.yaml
+
+# title: Database connection URL
+# type: string
+# required: true
+DATABASE_URL=postgres://localhost:5432/myapp
+
+# title: Server port
+# type: number
+# default: 3000
+PORT=3000
+
+# title: Debug mode
+# type: boolean
+# default: false
+DEBUG=true
+```
+
+Annotations (in comments above the variable) are used by `ee init` and `ee verify --fix` to generate documented `.env` files. They are optional and don't affect variable loading.
+
+---
+
+## Global Flags
+
+These flags work with all commands:
+
+- `-c, --config <path>` — Path to `.ee` file (default: `.ee` in current directory)
+- `--debug` — Enable debug output
+- `--version` — Show version
+
+---
+
+## File Organization Best Practices
+
+**Commit to version control:**
+- `.ee` — project configuration
+- `schema.yaml` — variable schema
+- `.env` — shared non-secret base config
+- `.env.development` — development defaults (non-secret)
+
+**Add to `.gitignore`:**
+```
+.env.local
+.env.*.local
+.env.secrets
+*.secret.env
+```
+
+**Use source stacking for secrets:**
+```json
+{
+  "environments": {
+    "production": {
+      "sources": [".env", ".env.production", ".env.secrets"]
+    }
+  }
+}
+```
+
+Keep secrets in `.env.secrets` (gitignored) and push them to origins with `ee push`.
