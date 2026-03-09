@@ -79,8 +79,10 @@ jobs:
         body_path: release_body.txt
         files: |
           build/ee-linux-amd64
+          build/ee-linux-arm64
           build/ee-windows-amd64.exe
           build/ee-darwin-amd64
+          build/ee-darwin-arm64
           build/checksums.txt
         draft: false
         prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
