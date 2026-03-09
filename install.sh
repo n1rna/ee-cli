@@ -98,6 +98,124 @@ check_version_exists() {
     fi
 }
 
+# Check if a directory is in the current PATH
+is_in_path() {
+    case ":$PATH:" in
+        *":$1:"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Find the best user-writable install directory
+# Priority: user-writable directories already in PATH, then well-known user dirs
+find_install_dir() {
+    # Well-known user-level bin directories, in order of preference
+    local candidates="
+        $HOME/.local/bin
+        $HOME/bin
+        $HOME/.cargo/bin
+        $HOME/go/bin
+        $HOME/.local/share/bin
+    "
+
+    # 1. Check if any well-known user directory is already in PATH and writable
+    for dir in $candidates; do
+        if is_in_path "$dir" && [ -d "$dir" ] && [ -w "$dir" ]; then
+            debug "Found user-writable directory in PATH: $dir"
+            echo "$dir"
+            return
+        fi
+    done
+
+    # 2. Scan PATH for any other user-writable directory (under $HOME)
+    local IFS=':'
+    for dir in $PATH; do
+        case "$dir" in
+            "$HOME"*)
+                if [ -d "$dir" ] && [ -w "$dir" ]; then
+                    debug "Found user-writable directory in PATH: $dir"
+                    echo "$dir"
+                    return
+                fi
+                ;;
+        esac
+    done
+    unset IFS
+
+    # 3. Check /usr/local/bin if writable (common on macOS)
+    if [ -w "/usr/local/bin" ]; then
+        debug "Using writable /usr/local/bin"
+        echo "/usr/local/bin"
+        return
+    fi
+
+    # 4. Create ~/.local/bin (XDG standard, most shells source it)
+    local fallback="$HOME/.local/bin"
+    mkdir -p "$fallback"
+
+    # Check if it's already in PATH after creation
+    if is_in_path "$fallback"; then
+        debug "Created $fallback (already in PATH)"
+    else
+        debug "Created $fallback (not yet in PATH)"
+    fi
+
+    echo "$fallback"
+}
+
+# Detect the user's shell profile file
+detect_shell_profile() {
+    local shell_name
+    shell_name=$(basename "${SHELL:-/bin/sh}")
+
+    case "$shell_name" in
+        zsh)
+            if [ -f "$HOME/.zshrc" ]; then
+                echo "$HOME/.zshrc"
+            else
+                echo "$HOME/.zprofile"
+            fi
+            ;;
+        bash)
+            if [ -f "$HOME/.bashrc" ]; then
+                echo "$HOME/.bashrc"
+            elif [ -f "$HOME/.bash_profile" ]; then
+                echo "$HOME/.bash_profile"
+            else
+                echo "$HOME/.profile"
+            fi
+            ;;
+        fish)
+            echo "$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            echo "$HOME/.profile"
+            ;;
+    esac
+}
+
+# Suggest how to add a directory to PATH
+suggest_path_update() {
+    local dir="$1"
+    local profile
+    profile=$(detect_shell_profile)
+    local shell_name
+    shell_name=$(basename "${SHELL:-/bin/sh}")
+
+    warn "Add $dir to your PATH by running:"
+    if [ "$shell_name" = "fish" ]; then
+        warn "  fish_add_path $dir"
+    else
+        warn "  echo 'export PATH=\"$dir:\$PATH\"' >> $profile"
+    fi
+    warn "Then restart your shell or run:"
+    if [ "$shell_name" = "fish" ]; then
+        warn "  source $profile"
+    else
+        warn "  source $profile"
+    fi
+}
+
 # Download and install
 install_binary() {
     local tmp_dir="/tmp/ee-install-$$"
@@ -127,20 +245,9 @@ install_binary() {
     # Make binary executable
     chmod +x "$tmp_dir/$BINARY_NAME$BINARY_SUFFIX"
 
-    # Determine install location
+    # Determine install location — prefer user-writable directories already in PATH
     local install_dir
-    if [ -w "/usr/local/bin" ]; then
-        install_dir="/usr/local/bin"
-    elif [ -d "$HOME/.local/bin" ]; then
-        install_dir="$HOME/.local/bin"
-        mkdir -p "$install_dir"
-    elif [ -d "$HOME/bin" ]; then
-        install_dir="$HOME/bin"
-    else
-        install_dir="$HOME/.local/bin"
-        mkdir -p "$install_dir"
-        warn "Created directory $install_dir - make sure it's in your PATH"
-    fi
+    install_dir=$(find_install_dir)
 
     # Install binary
     log "Installing to $install_dir/$BINARY_NAME$BINARY_SUFFIX..."
@@ -153,16 +260,15 @@ install_binary() {
 
     # Verify installation
     if "$install_dir/$BINARY_NAME$BINARY_SUFFIX" --version >/dev/null 2>&1; then
-        log "✅ ee $VERSION installed successfully!"
-        log "📍 Location: $install_dir/$BINARY_NAME$BINARY_SUFFIX"
+        log "ee $VERSION installed successfully!"
+        log "Location: $install_dir/$BINARY_NAME$BINARY_SUFFIX"
 
         # Check if binary is in PATH
         if command -v "$BINARY_NAME" >/dev/null 2>&1; then
-            log "🎉 You can now use 'ee' from anywhere!"
+            log "You can now use 'ee' from anywhere!"
         else
-            warn "⚠️  $install_dir is not in your PATH"
-            warn "Add this to your shell profile:"
-            warn "export PATH=\"$install_dir:\$PATH\""
+            warn "$install_dir is not in your PATH"
+            suggest_path_update "$install_dir"
         fi
 
         log ""
