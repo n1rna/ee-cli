@@ -92,9 +92,27 @@ func (c *HydrateCommand) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no variables defined in project schema")
 	}
 
-	// Hydrate values from shell environment
+	// Resolve values from environment sources (e.g. .env files)
+	envDef, err := context.GetEnvironment(envName)
+	if err != nil {
+		return fmt.Errorf("failed to get environment definition: %w", err)
+	}
+
+	resolver := util.NewEnvResolver()
+	sourceValues, err := resolver.MergeEnvironment(
+		util.EnvironmentSources{
+			Env:     envDef.Env,
+			Sources: envDef.Sources,
+			Sheets:  envDef.Sheets,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to resolve environment sources: %w", err)
+	}
+
+	// Hydrate values: source files > shell environment > schema defaults
 	printer := output.NewPrinter(output.FormatTable, false)
-	values := c.hydrateValues(schemaVariables, printer)
+	values := c.hydrateValues(schemaVariables, sourceValues, printer)
 
 	// Render output
 	rendered, err := c.render(values, format)
@@ -143,22 +161,25 @@ func (c *HydrateCommand) loadSchema(
 	return nil, fmt.Errorf("no schema defined in project config")
 }
 
-// hydrateValues resolves each schema variable from the shell environment or its default
+// hydrateValues resolves each schema variable with priority: source files > shell env > schema defaults
 func (c *HydrateCommand) hydrateValues(
 	schemaVariables map[string]entities.Variable,
+	sourceValues map[string]string,
 	printer *output.Printer,
 ) map[string]string {
 	values := make(map[string]string, len(schemaVariables))
 
 	for name, variable := range schemaVariables {
-		if envVal, ok := os.LookupEnv(name); ok {
+		if srcVal, ok := sourceValues[name]; ok {
+			values[name] = srcVal
+		} else if envVal, ok := os.LookupEnv(name); ok {
 			values[name] = envVal
 		} else if variable.Default != "" {
 			values[name] = variable.Default
 		} else {
 			values[name] = ""
 			if variable.Required {
-				printer.Warning(fmt.Sprintf("Required variable %s has no value in shell and no default", name))
+				printer.Warning(fmt.Sprintf("Required variable %s has no value in sources, shell, or defaults", name))
 			}
 		}
 	}
