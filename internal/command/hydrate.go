@@ -107,7 +107,10 @@ func (c *HydrateCommand) Run(cmd *cobra.Command, args []string) error {
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to resolve environment sources: %w", err)
+		// Source files may not exist in CI (gitignored) — fall back to shell env + defaults
+		printer := output.NewPrinter(output.FormatTable, false)
+		printer.Warning(fmt.Sprintf("Could not resolve environment sources: %v (falling back to shell env + defaults)", err))
+		sourceValues = map[string]string{}
 	}
 
 	// Hydrate values: source files > shell environment > schema defaults
