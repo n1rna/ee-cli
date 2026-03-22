@@ -1,5 +1,11 @@
 # ee - Environment Variable Manager with Schema Support
 
+[![Go](https://1tt.dev/badge/Go-1.23+-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
+[![Version](https://1tt.dev/badge/version-0.9.1-blue.svg)](https://github.com/n1rna/ee-cli/releases)
+[![License](https://1tt.dev/badge/license-MIT-green.svg)](https://github.com/n1rna/ee-cli/blob/main/LICENSE)
+[![llms.txt](https://1tt.dev/badge/llms.txt-available-brightgreen.svg)](https://github.com/n1rna/ee-cli/blob/main/llms.txt)
+[![Platform](https://1tt.dev/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey.svg)](https://github.com/n1rna/ee-cli/releases)
+
 `ee` is a CLI tool that brings structure and validation to environment variable management. It enables teams to define, validate, and manage environment variables across different environments with schema-based validation and inheritance support.
 
 ## Features
