@@ -114,6 +114,10 @@ variables:
 - `ee hydrate <environment>` - Generate an env file from the shell environment + schema defaults
 - `ee push [origin] <environment>` - Push secrets to a remote origin (GitHub, Cloudflare)
 - `ee auth [tool]` - Check authentication status for origin CLI tools (`gh`, `wrangler`)
+
+> Cloudflare pushes use `wrangler`. If it isn't on your `PATH`, `ee` automatically
+> runs it via `bunx wrangler` or `npx wrangler`, so a project-local install (or no
+> install at all, with `bun`/`npx` fetching it on demand) works without a global setup.
 - `ee skill <agent>` - Install the ee usage guide for your AI coding agent (see below)
 - `ee` - Inspect/filter the current shell's environment variables
 

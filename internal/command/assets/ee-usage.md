@@ -309,6 +309,11 @@ name can be omitted.
 
 Checks `gh` (GitHub) and `wrangler` (Cloudflare). Run before `ee push`.
 
+If `wrangler` is not on your `PATH` (common when it is a project dependency
+rather than a global install), `ee` automatically falls back to running it via a
+JavaScript package runner — `bunx wrangler` or `npx wrangler` — so no global
+install is required as long as `bun` or `node`/`npm` is available.
+
 ### `ee skill <agent>` — install this guide for a coding agent
 
 Writes this usage guide into the convention expected by the selected coding

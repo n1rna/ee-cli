@@ -3,7 +3,6 @@ package origin
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -75,7 +74,10 @@ func (c *Cloudflare) pushBulk(values map[string]string, dryRun bool) (*PushResul
 	}
 
 	args := []string{"secret", "bulk", "--name", c.cfg.Worker}
-	cmd := exec.Command("wrangler", args...)
+	cmd, err := ToolCommand("wrangler", args...)
+	if err != nil {
+		return nil, err
+	}
 	cmd.Stdin = strings.NewReader(string(jsonData))
 
 	out, err := cmd.CombinedOutput()
@@ -100,7 +102,12 @@ func (c *Cloudflare) pushIndividual(values map[string]string, dryRun bool) (*Pus
 		}
 
 		args := []string{"secret", "put", key, "--name", c.cfg.Worker}
-		cmd := exec.Command("wrangler", args...)
+		cmd, err := ToolCommand("wrangler", args...)
+		if err != nil {
+			result.Errors = append(result.Errors,
+				fmt.Errorf("failed to resolve wrangler for secret %s: %w", key, err))
+			continue
+		}
 		cmd.Stdin = strings.NewReader(values[key])
 
 		out, err := cmd.CombinedOutput()
