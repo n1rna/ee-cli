@@ -50,7 +50,12 @@ func noFrontmatter(body string) string {
 
 // claudeFrontmatter wraps the body in a Claude skill (SKILL.md) frontmatter.
 func claudeFrontmatter(body string) string {
-	return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", skillName, skillDescription, body)
+	return fmt.Sprintf(
+		"---\nname: %s\ndescription: %s\n---\n\n%s",
+		skillName,
+		skillDescription,
+		body,
+	)
 }
 
 // cursorFrontmatter wraps the body in a Cursor rule (.mdc) frontmatter.
