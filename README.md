@@ -1,7 +1,7 @@
 # ee - Environment Variable Manager with Schema Support
 
 [![Go](https://1tt.dev/badge/Go-1.23+-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
-[![Version](https://1tt.dev/badge/version-0.9.1-blue.svg)](https://github.com/n1rna/ee-cli/releases)
+[![Version](https://1tt.dev/badge/version-0.10.0-blue.svg)](https://github.com/n1rna/ee-cli/releases)
 [![License](https://1tt.dev/badge/license-MIT-green.svg)](https://github.com/n1rna/ee-cli/blob/main/LICENSE)
 [![AI Skill](https://1tt.dev/badge/AI%20skill-ee%20skill-brightgreen.svg)](#ai-coding-agent-integration)
 [![Platform](https://1tt.dev/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey.svg)](https://github.com/n1rna/ee-cli/releases)
