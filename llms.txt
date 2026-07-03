@@ -16,6 +16,24 @@ cd ee-cli
 go build -o ee ./cmd/ee
 ```
 
+## AI Coding Agent Skill
+
+Instead of copying this file around, install the ee usage guide directly into the
+convention your AI coding agent expects with `ee skill <agent>`:
+
+```bash
+ee skill claude       # -> .claude/skills/ee-usage/SKILL.md
+ee skill cursor       # -> .cursor/rules/ee-usage.mdc
+ee skill copilot      # -> .github/copilot-instructions.md
+ee skill codex        # -> AGENTS.md
+ee skill opencode     # -> AGENTS.md
+ee skill all          # install for every supported agent
+```
+
+The installed guide covers adding ee to a new project, working with a project that
+already has ee configured, the file formats, and the full command reference. See
+the `ee skill` command below for details.
+
 ## Core Concepts
 
 ### Project Configuration (`.ee` file)
@@ -527,6 +545,45 @@ ee auth wrangler
 **Supported tools:**
 - `gh` — GitHub CLI (checks `gh auth status`)
 - `wrangler` — Cloudflare Wrangler (checks `wrangler whoami`)
+
+---
+
+### `ee skill <agent>`
+
+Install the ee usage guide as a skill for an AI coding agent, so it knows how to
+work with ee in the current project.
+
+```bash
+# Install for a specific agent
+ee skill claude
+ee skill cursor --force
+
+# Install for every supported agent
+ee skill all
+
+# List supported agents
+ee skill --list
+
+# Print the guide to stdout instead of writing a file
+ee skill claude --print
+```
+
+**Supported agents and install paths:**
+
+| Agent      | Path                                  | Format                     |
+|------------|---------------------------------------|----------------------------|
+| `claude`   | `.claude/skills/ee-usage/SKILL.md`    | Skill with YAML frontmatter |
+| `cursor`   | `.cursor/rules/ee-usage.mdc`          | Rule with YAML frontmatter  |
+| `copilot`  | `.github/copilot-instructions.md`     | Plain markdown              |
+| `codex`    | `AGENTS.md`                           | Plain markdown              |
+| `opencode` | `AGENTS.md`                           | Plain markdown              |
+| `all`      | all of the above                      | —                          |
+
+**Flags:**
+- `-f, --force` — Overwrite an existing skill file
+- `-l, --list` — List supported agents and exit
+- `-p, --print` — Print the guide to stdout instead of writing a file
+- `-q, --quiet` — Suppress non-error output
 
 ---
 

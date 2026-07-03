@@ -74,6 +74,7 @@ func main() {
 		command.NewApplyCommand("global"),   // Apply environment variables
 		command.NewHydrateCommand("global"), // Generate env file from schema + shell env
 		command.NewVerifyCommand("global"),  // Verify project configuration
+		command.NewSkillCommand("global"),   // Install ee usage guide for AI coding agents
 		command.NewAuthCommand("global"),    // Authentication
 
 		// Remote Operations - push secrets to origins
