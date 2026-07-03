@@ -3,7 +3,7 @@
 [![Go](https://1tt.dev/badge/Go-1.23+-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
 [![Version](https://1tt.dev/badge/version-0.9.1-blue.svg)](https://github.com/n1rna/ee-cli/releases)
 [![License](https://1tt.dev/badge/license-MIT-green.svg)](https://github.com/n1rna/ee-cli/blob/main/LICENSE)
-[![llms.txt](https://1tt.dev/badge/llms.txt-available-brightgreen.svg)](https://github.com/n1rna/ee-cli/blob/main/llms.txt)
+[![AI Skill](https://1tt.dev/badge/AI%20skill-ee%20skill-brightgreen.svg)](#ai-coding-agent-integration)
 [![Platform](https://1tt.dev/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey.svg)](https://github.com/n1rna/ee-cli/releases)
 
 `ee` is a CLI tool that brings structure and validation to environment variable management. It enables teams to define, validate, and manage environment variables across different environments with schema-based validation and inheritance support.
@@ -108,13 +108,42 @@ variables:
 
 ## Commands
 
-- `ee new [project-name]` - Create a new project
-- `ee new [project-name] --env [env-name]` - Add new environment
-- `ee edit [project-name] --env [env-name]` - Edit environment variables
-- `ee apply [project-name] --env [env-name] [-- command]` - Apply variables
-- `ee export [project-name] --env [env-name] -f [format]` - Export configuration
-- `ee set [project-name] --env [env-name] KEY=VALUE...` - Set variables
-- `ee env [-e envfile] [-- command]` - Apply from .env file
+- `ee init [project-name]` - Initialize a new ee project (creates `.ee` + sample `.env` files)
+- `ee apply <environment|file> [-- command]` - Apply an environment (or `.env` file) and run a command
+- `ee verify [--fix]` - Validate the project against its schema and environment files
+- `ee hydrate <environment>` - Generate an env file from the shell environment + schema defaults
+- `ee push [origin] <environment>` - Push secrets to a remote origin (GitHub, Cloudflare)
+- `ee auth [tool]` - Check authentication status for origin CLI tools (`gh`, `wrangler`)
+- `ee skill <agent>` - Install the ee usage guide for your AI coding agent (see below)
+- `ee` - Inspect/filter the current shell's environment variables
+
+## AI Coding Agent Integration
+
+`ee` can teach your AI coding agent how to work with environment variables in a
+project by installing a usage guide (an "ee-usage" skill) into the location each
+agent expects. The guide explains how to add `ee` to a new project, how to work
+with a project that already has `ee` set up, the `.ee`/schema/`.env` formats, and
+the full command reference.
+
+```bash
+# Install the skill for your agent of choice
+ee skill claude       # -> .claude/skills/ee-usage/SKILL.md
+ee skill cursor       # -> .cursor/rules/ee-usage.mdc
+ee skill copilot      # -> .github/copilot-instructions.md
+ee skill codex        # -> AGENTS.md
+ee skill opencode     # -> AGENTS.md
+
+# Install for every supported agent at once
+ee skill all
+
+# List supported agents, or preview the guide without writing a file
+ee skill --list
+ee skill claude --print
+```
+
+Use `--force` to overwrite an existing file (for example, to refresh the guide
+after upgrading `ee`). Commit the generated file so your whole team's agents pick
+it up.
 
 ## Configuration
 
