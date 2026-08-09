@@ -152,17 +152,18 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("push failed: %w", err)
 	}
 
-	// Report results
+	// Report results. Some drivers report per-secret failures via result.Errors
+	// rather than a returned error, so surface those as a non-zero exit — CI and
+	// callers like ee-action/sync rely on the exit code to detect failed pushes.
 	if len(result.Errors) > 0 {
 		for _, e := range result.Errors {
 			printer.Error(fmt.Sprintf("  %v", e))
 		}
-		printer.Warning(fmt.Sprintf("Pushed %d secrets with %d errors",
-			result.SecretsCount, len(result.Errors)))
-	} else {
-		printer.Success(fmt.Sprintf("Pushed %d secrets to %s", result.SecretsCount, originName))
+		return fmt.Errorf("pushed %d secret(s) to %s, %d failed",
+			result.SecretsCount, originName, len(result.Errors))
 	}
 
+	printer.Success(fmt.Sprintf("Pushed %d secrets to %s", result.SecretsCount, originName))
 	return nil
 }
 
