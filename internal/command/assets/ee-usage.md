@@ -357,7 +357,7 @@ Hydrate an env file at deploy time from a bundled secret:
 ```yaml
 - uses: actions/checkout@v4
 - name: Prepare environment
-  uses: n1rna/ee-action@v1
+  uses: n1rna/ee-action/hydrate@v1
   with:
     environment: production
     config_path: .ee
